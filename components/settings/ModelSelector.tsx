@@ -95,8 +95,8 @@ export default function ModelSelector({
   const getModelInfo = (modelId: string): { model: ModelInfo; tier: string } | null => {
     if (!tiers) return null;
     
-    for (const [tier, models] of Object.entries(tiers)) {
-      const model = models.find(m => m.id === modelId);
+    for (const [tier, models] of Object.entries(tiers) as [string, ModelInfo[]][]) {
+      const model = models.find((m: ModelInfo) => m.id === modelId);
       if (model) {
         return { model, tier };
       }
@@ -233,7 +233,7 @@ export default function ModelSelector({
         {/* Dropdown menu */}
         {isOpen && tiers && (
           <div className="absolute z-50 w-full mt-2 bg-white border border-gray-200 rounded-lg shadow-lg max-h-96 overflow-y-auto">
-            {Object.entries(tiers).map(([tier, models]) => (
+            {(Object.entries(tiers) as [string, ModelInfo[]][]).map(([tier, models]) => (
               <div key={tier}>
                 {/* Tier header */}
                 <div className="sticky top-0 px-4 py-2 bg-gray-50 border-b border-gray-200">

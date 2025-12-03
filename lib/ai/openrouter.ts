@@ -144,11 +144,12 @@ export function getModelTier(modelId: string): ModelTier | undefined {
 }
 
 // Dynamic client factory -- use DB key if present, else env var
-let clientCache: { key?: string; client?: any } = {};
+let clientCache: { key: string; client: any } | null = null;
 export async function getOpenRouterClient(overrideKey?: string): Promise<any> {
-  const key = overrideKey || (await db.getSetting('openrouter_api_key')) || process.env.OPENROUTER_API_KEY;
+  const dbKey = await db.getSetting('openrouter_api_key');
+  const key = overrideKey || (typeof dbKey === 'string' ? dbKey : null) || process.env.OPENROUTER_API_KEY;
   if (!key) throw new Error('No OpenRouter API key configured');
-  if (clientCache.client && clientCache.key === key) return clientCache.client;
+  if (clientCache && clientCache.client && clientCache.key === key) return clientCache.client;
   // Instantiate a new OpenAI client
   const client = new OpenAI({ apiKey: key, baseURL: 'https://openrouter.ai/api/v1' } as any);
   clientCache = { key, client };

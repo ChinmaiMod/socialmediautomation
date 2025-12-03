@@ -3,7 +3,8 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import PatternsPage from '../page';
 
 jest.mock('@/components/layout/Sidebar', () => ({
-  Sidebar: () => <div data-testid="sidebar" />,
+  __esModule: true,
+  default: () => <div data-testid="sidebar" />,
 }));
 
 const pushMock = jest.fn();

@@ -4,7 +4,8 @@ import userEvent from '@testing-library/user-event';
 import HistoryPage from '../page';
 
 jest.mock('@/components/layout/Sidebar', () => ({
-  Sidebar: () => <div data-testid="sidebar" />,
+  __esModule: true,
+  default: () => <div data-testid="sidebar" />,
 }));
 
 describe('HistoryPage', () => {

@@ -4,6 +4,31 @@ import { db, Platform } from '@/lib/db';
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
+    
+    // Check if requesting single post detail
+    const postId = searchParams.get('id');
+    if (postId) {
+      const post = await db.getPost(postId);
+      
+      if (!post) {
+        return NextResponse.json(
+          { success: false, error: 'Post not found' },
+          { status: 404 }
+        );
+      }
+      
+      const engagements = await db.getPostEngagements(postId);
+      
+      return NextResponse.json({
+        success: true,
+        data: {
+          ...post,
+          engagements,
+        },
+      });
+    }
+    
+    // List posts with filters
     const accountId = searchParams.get('account_id');
     const platform = searchParams.get('platform') as Platform | null;
     const status = searchParams.get('status');
@@ -59,41 +84,5 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function GET_DETAIL(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const postId = searchParams.get('id');
-    
-    if (!postId) {
-      return NextResponse.json(
-        { success: false, error: 'Post ID is required' },
-        { status: 400 }
-      );
-    }
-
-    const post = await db.getPost(postId);
-    
-    if (!post) {
-      return NextResponse.json(
-        { success: false, error: 'Post not found' },
-        { status: 404 }
-      );
-    }
-    
-    const engagements = await db.getPostEngagements(postId);
-    
-    return NextResponse.json({
-      success: true,
-      data: {
-        ...post,
-        engagements,
-      },
-    });
-  } catch (error) {
-    console.error('Error fetching post detail:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to fetch post detail' },
-      { status: 500 }
-    );
-  }
-}
+// Note: For single post detail, use GET with ?id=<postId> parameter
+// The main GET handler will detect the id param and return full post detail

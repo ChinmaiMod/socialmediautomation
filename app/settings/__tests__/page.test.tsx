@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import SettingsPage from '../page';
 
 // Mock the layout sidebar if used
-jest.mock('@/components/layout/Sidebar', () => ({ Sidebar: () => <div data-testid="sidebar" /> }));
+jest.mock('@/components/layout/Sidebar', () => ({ __esModule: true, default: () => <div data-testid="sidebar" /> }));
 
 describe('SettingsPage', () => {
   beforeEach(() => {
