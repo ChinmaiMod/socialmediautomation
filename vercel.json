@@ -1,0 +1,36 @@
+{
+  "version": 2,
+  "crons": [
+    {
+      "path": "/api/cron",
+      "schedule": "0 8,14,19 * * *"
+    }
+  ],
+  "functions": {
+    "api/cron.ts": {
+      "maxDuration": 60,
+      "memory": 1024
+    },
+    "api/post.ts": {
+      "maxDuration": 30,
+      "memory": 512
+    },
+    "api/trends.ts": {
+      "maxDuration": 45,
+      "memory": 512
+    },
+    "api/analytics.ts": {
+      "maxDuration": 20,
+      "memory": 256
+    }
+  },
+  "env": {
+    "NODE_ENV": "production"
+  },
+  "build": {
+    "env": {
+      "NEXT_PUBLIC_SUPABASE_URL": "@supabase_url",
+      "NEXT_PUBLIC_SUPABASE_ANON_KEY": "@supabase_anon_key"
+    }
+  }
+}

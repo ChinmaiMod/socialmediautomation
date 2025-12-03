@@ -1,0 +1,35 @@
+{
+  "mcpServers": {
+    "supabase": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-supabase"
+      ],
+      "env": {
+        "SUPABASE_ACCESS_TOKEN": "sbp_your_access_token_here",
+        "SUPABASE_PROJECT_ID": "fgnikgxvbkwwmtyruqej"
+      }
+    },
+    "vercel": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-vercel"
+      ],
+      "env": {
+        "VERCEL_ACCESS_TOKEN": "your_vercel_token_here"
+      }
+    },
+    "github": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-github"
+      ],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_your_github_token_here"
+      }
+    }
+  }
+}

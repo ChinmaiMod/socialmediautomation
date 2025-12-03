@@ -1,0 +1,193 @@
+'use client';
+
+import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { 
+  ArrowLeft,
+  Linkedin,
+  Facebook,
+  Instagram,
+  ExternalLink,
+  AlertCircle,
+  Loader2,
+  Zap
+} from 'lucide-react';
+import { useAuth } from '@/lib/AuthProvider';
+
+interface PlatformConfig {
+  id: string;
+  name: string;
+  icon: React.ReactNode;
+  color: string;
+  bgColor: string;
+  description: string;
+  connected: boolean;
+}
+
+export default function ConnectAccountPage() {
+  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
+  const [connecting, setConnecting] = useState<string | null>(null);
+  const [error, setError] = useState('');
+
+  const platforms: PlatformConfig[] = [
+    {
+      id: 'linkedin',
+      name: 'LinkedIn',
+      icon: <Linkedin className="w-8 h-8" />,
+      color: 'text-blue-600',
+      bgColor: 'bg-blue-600',
+      description: 'Connect your LinkedIn profile to post professional content',
+      connected: false,
+    },
+    {
+      id: 'facebook',
+      name: 'Facebook',
+      icon: <Facebook className="w-8 h-8" />,
+      color: 'text-blue-500',
+      bgColor: 'bg-blue-500',
+      description: 'Connect your Facebook page for social updates',
+      connected: false,
+    },
+    {
+      id: 'instagram',
+      name: 'Instagram',
+      icon: <Instagram className="w-8 h-8" />,
+      color: 'text-pink-600',
+      bgColor: 'bg-gradient-to-r from-purple-500 to-pink-500',
+      description: 'Connect your Instagram business account',
+      connected: false,
+    },
+    {
+      id: 'pinterest',
+      name: 'Pinterest',
+      icon: (
+        <svg className="w-8 h-8" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0C5.373 0 0 5.372 0 12c0 5.084 3.163 9.426 7.627 11.174-.105-.949-.2-2.405.042-3.441.218-.937 1.407-5.965 1.407-5.965s-.359-.719-.359-1.782c0-1.668.967-2.914 2.171-2.914 1.023 0 1.518.769 1.518 1.69 0 1.029-.655 2.568-.994 3.995-.283 1.194.599 2.169 1.777 2.169 2.133 0 3.772-2.249 3.772-5.495 0-2.873-2.064-4.882-5.012-4.882-3.414 0-5.418 2.561-5.418 5.207 0 1.031.397 2.138.893 2.738a.36.36 0 01.083.345l-.333 1.36c-.053.22-.174.267-.402.161-1.499-.698-2.436-2.889-2.436-4.649 0-3.785 2.75-7.262 7.929-7.262 4.163 0 7.398 2.967 7.398 6.931 0 4.136-2.607 7.464-6.227 7.464-1.216 0-2.359-.631-2.75-1.378l-.748 2.853c-.271 1.043-1.002 2.35-1.492 3.146C9.57 23.812 10.763 24 12 24c6.627 0 12-5.373 12-12 0-6.628-5.373-12-12-12z"/>
+        </svg>
+      ),
+      color: 'text-red-600',
+      bgColor: 'bg-red-600',
+      description: 'Connect your Pinterest business account for pins',
+      connected: false,
+    },
+  ];
+
+  async function handleConnect(platformId: string) {
+    setConnecting(platformId);
+    setError('');
+
+    // Redirect to OAuth flow
+    window.location.href = `/api/auth/connect/${platformId}`;
+  }
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    router.push('/login');
+    return null;
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="bg-white border-b border-gray-200">
+        <div className="max-w-4xl mx-auto px-4 py-4">
+          <div className="flex items-center gap-4">
+            <Link
+              href="/accounts"
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5 text-gray-600" />
+            </Link>
+            <div className="flex items-center gap-2">
+              <div className="p-2 bg-blue-600 rounded-lg">
+                <Zap className="w-5 h-5 text-white" />
+              </div>
+              <span className="text-xl font-bold text-gray-900">Social Auto</span>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="max-w-4xl mx-auto px-4 py-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900">Connect a Social Account</h1>
+          <p className="text-gray-600 mt-2">
+            Connect your social media accounts to start posting automatically
+          </p>
+        </div>
+
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-red-600">{error}</p>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {platforms.map((platform) => (
+            <div
+              key={platform.id}
+              className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"
+            >
+              <div className={`h-2 ${platform.bgColor}`} />
+              <div className="p-6">
+                <div className="flex items-start gap-4">
+                  <div className={`p-3 rounded-lg ${platform.bgColor} text-white`}>
+                    {platform.icon}
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-gray-900">{platform.name}</h3>
+                    <p className="text-sm text-gray-500 mt-1">{platform.description}</p>
+                  </div>
+                </div>
+
+                <div className="mt-6">
+                  <button
+                    onClick={() => handleConnect(platform.id)}
+                    disabled={connecting === platform.id}
+                    className={`w-full flex items-center justify-center gap-2 px-4 py-3 ${platform.bgColor} text-white rounded-lg font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed`}
+                  >
+                    {connecting === platform.id ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Connecting...
+                      </>
+                    ) : (
+                      <>
+                        <ExternalLink className="w-5 h-5" />
+                        Connect {platform.name}
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-8 p-6 bg-blue-50 rounded-xl">
+          <h3 className="text-lg font-semibold text-blue-900 mb-2">Important Information</h3>
+          <ul className="space-y-2 text-sm text-blue-800">
+            <li>• You will be redirected to each platform to authorize the connection</li>
+            <li>• We only request permissions necessary to post on your behalf</li>
+            <li>• You can disconnect accounts at any time from the Accounts page</li>
+            <li>• Your credentials are securely encrypted and stored</li>
+          </ul>
+        </div>
+      </main>
+    </div>
+  );
+}
