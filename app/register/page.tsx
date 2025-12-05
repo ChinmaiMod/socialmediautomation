@@ -7,24 +7,7 @@ import type { User } from '@supabase/supabase-js';
 import { Mail, Lock, User as UserIcon, Zap, AlertCircle } from 'lucide-react';
 import { signUp } from '@/lib/auth';
 
-function getEmailRedirectUrl() {
-  if (typeof window !== 'undefined' && window.location) {
-    return `${window.location.origin.replace(/\/$/, '')}/login`;
-  }
-
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
-  if (siteUrl) {
-    return `${siteUrl.replace(/\/$/, '')}/login`;
-  }
-
-  const vercelUrl = process.env.NEXT_PUBLIC_VERCEL_URL;
-  if (vercelUrl) {
-    const normalized = vercelUrl.startsWith('http') ? vercelUrl : `https://${vercelUrl}`;
-    return `${normalized.replace(/\/$/, '')}/login`;
-  }
-
-  return undefined;
-}
+import { getEmailRedirectUrl } from '@/lib/utils/redirect';
 
 const DUPLICATE_EMAIL_MESSAGE = 'This email is already registered. Try signing in or resetting your password instead.';
 
