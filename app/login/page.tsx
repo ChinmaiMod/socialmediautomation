@@ -3,22 +3,55 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Mail, Lock, Zap, AlertCircle } from 'lucide-react';
+import { Mail, Lock, Zap, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { signIn } from '@/lib/auth';
+
+type Feedback = {
+  variant: 'error' | 'success';
+  message: string;
+};
+
+function getFriendlyLoginError(message?: string, status?: number) {
+  if (!message) return 'Unable to sign in. Please try again.';
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes('invalid login credentials')) {
+    return 'The email or password you entered is incorrect. Double-check both fields and try again.';
+  }
+
+  if (normalized.includes('email not confirmed') || normalized.includes('not confirmed')) {
+    return 'Your email address has not been confirmed yet. Open the verification link we sent when you registered.';
+  }
+
+  if (normalized.includes('not allowed')) {
+    return 'This account is disabled or does not have access to the dashboard. Contact an administrator for help.';
+  }
+
+  if (normalized.includes('rate limit') || status === 429) {
+    return 'Too many login attempts. Please wait a few moments before trying again.';
+  }
+
+  return message;
+}
 
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [feedback, setFeedback] = useState<Feedback | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError('');
+    setFeedback(null);
 
     if (!email || !password) {
-      setError('Email and password are required');
+      setFeedback({ variant: 'error', message: 'Email and password are required.' });
+      return;
+    }
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setFeedback({ variant: 'error', message: 'You appear to be offline. Please connect to the internet and try again.' });
       return;
     }
 
@@ -28,13 +61,21 @@ export default function LoginPage() {
       const { data, error } = await signIn(email, password);
 
       if (error) {
-        setError(error.message);
+        setFeedback({ variant: 'error', message: getFriendlyLoginError(error.message, (error as any)?.status) });
+      } else if (!data.session) {
+        setFeedback({ variant: 'error', message: 'We could not start a session. Confirm your email or reset your password, then try again.' });
       } else if (data.user) {
-        router.push('/');
-        router.refresh();
+        setFeedback({ variant: 'success', message: 'Login successful! Redirecting to your dashboard…' });
+        setTimeout(() => {
+          router.replace('/');
+          router.refresh();
+        }, 600);
       }
     } catch (err: any) {
-      setError(err.message || 'Login failed');
+      const friendly = err?.message
+        ? getFriendlyLoginError(err.message)
+        : 'Login failed unexpectedly. Please try again.';
+      setFeedback({ variant: 'error', message: friendly });
     } finally {
       setLoading(false);
     }
@@ -75,10 +116,27 @@ export default function LoginPage() {
               <p className="text-gray-600 mt-2">Access your dashboard</p>
             </div>
 
-            {error && (
-              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-red-600">{error}</p>
+            {feedback && (
+              <div
+                className={`mb-6 p-4 rounded-lg border flex items-start gap-3 ${
+                  feedback.variant === 'error'
+                    ? 'bg-red-50 border-red-200 text-red-700'
+                    : 'bg-green-50 border-green-200 text-green-700'
+                }`}
+              >
+                {feedback.variant === 'error' ? (
+                  <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                ) : (
+                  <CheckCircle2 className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                )}
+                <div>
+                  <p className="text-sm">{feedback.message}</p>
+                  {feedback.variant === 'error' && (
+                    <p className="text-xs mt-2 opacity-80">
+                      Tip: If you just registered, confirm your email first or use the “Forgot password” option to reset access.
+                    </p>
+                  )}
+                </div>
               </div>
             )}
 
