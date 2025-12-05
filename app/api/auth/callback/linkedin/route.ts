@@ -3,6 +3,8 @@ import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { supabase, handleSupabaseError } from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
 // LinkedIn OAuth callback
 export async function GET(request: NextRequest) {
   try {

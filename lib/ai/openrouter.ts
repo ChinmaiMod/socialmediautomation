@@ -1,16 +1,6 @@
 import OpenAI from 'openai';
 import db from '../db';
 
-// OpenRouter uses OpenAI-compatible API
-const openrouter = new OpenAI({
-  apiKey: process.env.OPENROUTER_API_KEY,
-  baseURL: 'https://openrouter.ai/api/v1',
-  defaultHeaders: {
-    'HTTP-Referer': process.env.APP_URL || 'http://localhost:3000',
-    'X-Title': 'Social Media Automation',
-  },
-});
-
 // Default model - can be configured via environment variable or database
 const DEFAULT_MODEL = process.env.OPENROUTER_MODEL || 'anthropic/claude-sonnet-4';
 
@@ -155,9 +145,6 @@ export async function getOpenRouterClient(overrideKey?: string): Promise<any> {
   clientCache = { key, client };
   return client;
 }
-
-// Re-export old client instance (constructed from env var) for compatibility
-export { openrouter };
 
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
@@ -328,7 +315,6 @@ export default {
   chat,
   generateJSON,
   analyze,
-  openrouter,
   AVAILABLE_MODELS,
   ALL_MODELS,
   DEFAULT_MODEL,

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Mail, Lock, Zap, AlertCircle, CheckCircle2 } from 'lucide-react';
@@ -34,7 +34,7 @@ function getFriendlyLoginError(message?: string, status?: number) {
   return message;
 }
 
-export default function LoginPage() {
+function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectParam = (searchParams?.get('redirect') as string) || '/';
@@ -66,7 +66,7 @@ export default function LoginPage() {
         setFeedback({ variant: 'error', message: getFriendlyLoginError(error.message, (error as any)?.status) });
       } else if (!data.session) {
         setFeedback({ variant: 'error', message: 'We could not start a session. Confirm your email or reset your password, then try again.' });
-      } else if (data.user) {
+      } else if (data.session) {
         setFeedback({ variant: 'success', message: 'Login successful! Redirecting to your dashboard…' });
         setTimeout(() => {
           // Replace navigation with the provided redirect param (or fallback to '/')
@@ -207,5 +207,22 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={(
+        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+          <div className="text-center space-y-2">
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mx-auto" />
+            <p className="text-gray-600">Loading login experience…</p>
+          </div>
+        </div>
+      )}
+    >
+      <LoginPageContent />
+    </Suspense>
   );
 }

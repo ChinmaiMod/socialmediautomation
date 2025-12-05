@@ -3,6 +3,8 @@ import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { supabase } from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
 // Facebook/Instagram OAuth callback (uses same endpoint, Meta Graph API)
 export async function GET(request: NextRequest) {
   try {

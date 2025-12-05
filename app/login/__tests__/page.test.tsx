@@ -62,4 +62,22 @@ describe('Login Page', () => {
     await waitFor(() => expect(mockSignIn).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(replaceMock).toHaveBeenCalledWith('/dashboard'));
   });
+
+  it('redirects when a session is present even if user is null', async () => {
+    useSearchParamsMock.mockReturnValue({ get: (k: string) => null });
+
+    mockSignIn.mockResolvedValueOnce({ data: { session: { access_token: 't' }, user: null }, error: null });
+
+    const { getByPlaceholderText, getByRole } = render(React.createElement(LoginPage));
+    const email = getByPlaceholderText('you@example.com') as HTMLInputElement;
+    const password = getByPlaceholderText('••••••••') as HTMLInputElement;
+    const submit = getByRole('button', { name: /Sign In/i });
+
+    await userEvent.type(email, 'test@example.com');
+    await userEvent.type(password, 'password123');
+    await userEvent.click(submit);
+
+    await waitFor(() => expect(mockSignIn).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(replaceMock).toHaveBeenCalledWith('/'));
+  });
 });

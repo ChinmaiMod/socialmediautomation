@@ -1,16 +1,41 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { supabase, getSupabaseClient } from './auth';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+export { supabase };
 
-// Client for browser/authenticated user operations
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+function ensureEnvVar(key: string) {
+  const value = process.env[key];
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${key}`);
+  }
+  return value;
+}
 
-// Admin client for server-side operations (cron jobs, etc.)
-export const supabaseAdmin = supabaseServiceKey 
-  ? createClient(supabaseUrl, supabaseServiceKey)
-  : supabase;
+let supabaseAdminClient: SupabaseClient | null = null;
+
+function createSupabaseAdminClient(): SupabaseClient {
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseServiceKey) {
+    return getSupabaseClient();
+  }
+  const supabaseUrl = ensureEnvVar('NEXT_PUBLIC_SUPABASE_URL');
+  return createClient(supabaseUrl, supabaseServiceKey);
+}
+
+function getSupabaseAdminClient(): SupabaseClient {
+  if (!supabaseAdminClient) {
+    supabaseAdminClient = createSupabaseAdminClient();
+  }
+  return supabaseAdminClient;
+}
+
+export const supabaseAdmin = new Proxy({} as SupabaseClient, {
+  get(_target, prop, receiver) {
+    const client = getSupabaseAdminClient();
+    const value = Reflect.get(client, prop, receiver);
+    return typeof value === 'function' ? value.bind(client) : value;
+  },
+});
 
 // Type definitions for database tables
 export type Platform = 'linkedin' | 'facebook' | 'instagram' | 'pinterest';
