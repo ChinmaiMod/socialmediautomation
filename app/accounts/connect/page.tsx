@@ -11,7 +11,8 @@ import {
   ExternalLink,
   AlertCircle,
   Loader2,
-  Zap
+  Zap,
+  Settings
 } from 'lucide-react';
 import { useAuth } from '@/lib/AuthProvider';
 
@@ -70,6 +71,19 @@ export default function ConnectAccountPage() {
       color: 'text-red-600',
       bgColor: 'bg-red-600',
       description: 'Connect your Pinterest business account for pins',
+      connected: false,
+    },
+    {
+      id: 'twitter',
+      name: 'Twitter/X',
+      icon: (
+        <svg className="w-8 h-8" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+        </svg>
+      ),
+      color: 'text-black',
+      bgColor: 'bg-black',
+      description: 'Connect your Twitter/X account to post tweets',
       connected: false,
     },
   ];
@@ -135,6 +149,21 @@ export default function ConnectAccountPage() {
             <p className="text-sm text-red-600">{error}</p>
           </div>
         )}
+
+        {/* Setup Notice */}
+        <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-3">
+          <Settings className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-amber-800">OAuth Credentials Required</p>
+            <p className="text-sm text-amber-700 mt-1">
+              Before connecting accounts, ensure your platform OAuth credentials are configured in the{' '}
+              <Link href="/settings" className="underline font-medium hover:text-amber-900">
+                Settings → Platforms
+              </Link>{' '}
+              tab. Each platform requires a registered developer app with valid API keys.
+            </p>
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {platforms.map((platform) => (

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import ModelSelector from '@/components/settings/ModelSelector';
-import { Settings, Cpu, FileText, Search, Zap, Link2 } from 'lucide-react';
+import { Settings, Cpu, FileText, Search, Zap, Link2, ChevronDown, ChevronUp } from 'lucide-react';
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<'models' | 'automation' | 'integrations' | 'platforms'>('models');
@@ -31,6 +31,10 @@ export default function SettingsPage() {
   const [pinterestAppId, setPinterestAppId] = useState('');
   const [pinterestAppSecret, setPinterestAppSecret] = useState('');
   const [pinterestConfigured, setPinterestConfigured] = useState(false);
+  const [twitterClientId, setTwitterClientId] = useState('');
+  const [twitterClientSecret, setTwitterClientSecret] = useState('');
+  const [twitterConfigured, setTwitterConfigured] = useState(false);
+  const [expandedInstructions, setExpandedInstructions] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -91,6 +95,8 @@ export default function SettingsPage() {
           setFacebookConfigured(payload.data.facebook?.configured || false);
           setPinterestAppId(payload.data.pinterest?.app_id || '');
           setPinterestConfigured(payload.data.pinterest?.configured || false);
+          setTwitterClientId(payload.data.twitter?.client_id || '');
+          setTwitterConfigured(payload.data.twitter?.configured || false);
         }
       } catch (err) {
         // ignore
@@ -117,6 +123,8 @@ export default function SettingsPage() {
           facebook_app_secret: facebookAppSecret || undefined,
           pinterest_app_id: pinterestAppId,
           pinterest_app_secret: pinterestAppSecret || undefined,
+          twitter_client_id: twitterClientId,
+          twitter_client_secret: twitterClientSecret || undefined,
         }),
       });
       const payload = await res.json();
@@ -126,6 +134,7 @@ export default function SettingsPage() {
       setLinkedinClientSecret('');
       setFacebookAppSecret('');
       setPinterestAppSecret('');
+      setTwitterClientSecret('');
       // Refetch to update configured status
       const refetch = await fetch('/api/settings/platforms');
       const refetchPayload = await refetch.json();
@@ -133,6 +142,7 @@ export default function SettingsPage() {
         setLinkedinConfigured(refetchPayload.data.linkedin?.configured || false);
         setFacebookConfigured(refetchPayload.data.facebook?.configured || false);
         setPinterestConfigured(refetchPayload.data.pinterest?.configured || false);
+        setTwitterConfigured(refetchPayload.data.twitter?.configured || false);
       }
     } catch (err: any) {
       setPlatformsError(err.message || 'Failed to save credentials');
@@ -504,10 +514,35 @@ export default function SettingsPage() {
                       </p>
                     </div>
                   </div>
-                  {linkedinConfigured && (
-                    <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full">Configured</span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {linkedinConfigured && (
+                      <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full">Configured</span>
+                    )}
+                    <button
+                      onClick={() => setExpandedInstructions(expandedInstructions === 'linkedin' ? null : 'linkedin')}
+                      className="p-1 text-gray-500 hover:text-gray-700"
+                      aria-label="Toggle instructions"
+                    >
+                      {expandedInstructions === 'linkedin' ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                    </button>
+                  </div>
                 </div>
+                
+                {expandedInstructions === 'linkedin' && (
+                  <div className="mb-4 p-4 bg-blue-50 rounded-lg text-sm">
+                    <h4 className="font-medium text-blue-900 mb-2">How to get LinkedIn OAuth credentials:</h4>
+                    <ol className="list-decimal list-inside space-y-2 text-blue-800">
+                      <li>Go to <a href="https://www.linkedin.com/developers/apps" target="_blank" rel="noopener noreferrer" className="underline">LinkedIn Developer Portal</a></li>
+                      <li>Click &quot;Create app&quot; and fill in your app details</li>
+                      <li>Under the &quot;Auth&quot; tab, find your Client ID and Client Secret</li>
+                      <li>Add the redirect URL shown below to &quot;Authorized redirect URLs for your app&quot;</li>
+                      <li>Under &quot;Products&quot;, request access to &quot;Share on LinkedIn&quot; and &quot;Sign In with LinkedIn using OpenID Connect&quot;</li>
+                      <li>Wait for product approval (usually instant for basic permissions)</li>
+                    </ol>
+                    <p className="mt-3 text-blue-700"><strong>Required scopes:</strong> openid, profile, email, w_member_social</p>
+                  </div>
+                )}
+                
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Client ID</label>
@@ -551,10 +586,37 @@ export default function SettingsPage() {
                       </p>
                     </div>
                   </div>
-                  {facebookConfigured && (
-                    <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full">Configured</span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {facebookConfigured && (
+                      <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full">Configured</span>
+                    )}
+                    <button
+                      onClick={() => setExpandedInstructions(expandedInstructions === 'facebook' ? null : 'facebook')}
+                      className="p-1 text-gray-500 hover:text-gray-700"
+                      aria-label="Toggle instructions"
+                    >
+                      {expandedInstructions === 'facebook' ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                    </button>
+                  </div>
                 </div>
+                
+                {expandedInstructions === 'facebook' && (
+                  <div className="mb-4 p-4 bg-blue-50 rounded-lg text-sm">
+                    <h4 className="font-medium text-blue-900 mb-2">How to get Facebook/Instagram OAuth credentials:</h4>
+                    <ol className="list-decimal list-inside space-y-2 text-blue-800">
+                      <li>Go to <a href="https://developers.facebook.com/apps" target="_blank" rel="noopener noreferrer" className="underline">Meta for Developers</a></li>
+                      <li>Click &quot;Create App&quot; → Select &quot;Business&quot; type</li>
+                      <li>Fill in your app name and contact email</li>
+                      <li>In the app dashboard, go to Settings → Basic to find App ID and App Secret</li>
+                      <li>Add &quot;Facebook Login&quot; product to your app</li>
+                      <li>Configure Valid OAuth Redirect URIs with the URLs shown below</li>
+                      <li>For Instagram: Add &quot;Instagram Basic Display&quot; or &quot;Instagram Graph API&quot; product</li>
+                      <li>Submit your app for review if you need access beyond test users</li>
+                    </ol>
+                    <p className="mt-3 text-blue-700"><strong>Required permissions:</strong> pages_show_list, pages_read_engagement, pages_manage_posts, instagram_basic, instagram_content_publish</p>
+                  </div>
+                )}
+                
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">App ID</label>
@@ -577,9 +639,10 @@ export default function SettingsPage() {
                     />
                   </div>
                 </div>
-                <p className="text-xs text-gray-500 mt-2">
-                  Redirect URIs: Add both Facebook and Instagram callback URLs in Meta Developer settings
-                </p>
+                <div className="text-xs text-gray-500 mt-2 space-y-1">
+                  <p>Facebook Redirect URI: <code className="bg-gray-100 px-1 rounded">{typeof window !== 'undefined' ? window.location.origin : ''}/api/auth/callback/facebook</code></p>
+                  <p>Instagram Redirect URI: <code className="bg-gray-100 px-1 rounded">{typeof window !== 'undefined' ? window.location.origin : ''}/api/auth/callback/instagram</code></p>
+                </div>
               </div>
 
               {/* Pinterest */}
@@ -598,10 +661,35 @@ export default function SettingsPage() {
                       </p>
                     </div>
                   </div>
-                  {pinterestConfigured && (
-                    <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full">Configured</span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {pinterestConfigured && (
+                      <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full">Configured</span>
+                    )}
+                    <button
+                      onClick={() => setExpandedInstructions(expandedInstructions === 'pinterest' ? null : 'pinterest')}
+                      className="p-1 text-gray-500 hover:text-gray-700"
+                      aria-label="Toggle instructions"
+                    >
+                      {expandedInstructions === 'pinterest' ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                    </button>
+                  </div>
                 </div>
+                
+                {expandedInstructions === 'pinterest' && (
+                  <div className="mb-4 p-4 bg-red-50 rounded-lg text-sm">
+                    <h4 className="font-medium text-red-900 mb-2">How to get Pinterest OAuth credentials:</h4>
+                    <ol className="list-decimal list-inside space-y-2 text-red-800">
+                      <li>Go to <a href="https://developers.pinterest.com/apps/" target="_blank" rel="noopener noreferrer" className="underline">Pinterest Developers</a></li>
+                      <li>Click &quot;Create app&quot; and fill in your app details</li>
+                      <li>You&apos;ll need a Pinterest Business account to create developer apps</li>
+                      <li>Once created, find your App ID and App Secret in the app settings</li>
+                      <li>Add the redirect URI shown below to your app&apos;s redirect URLs</li>
+                      <li>Request access to required scopes: boards:read, pins:read, pins:write</li>
+                    </ol>
+                    <p className="mt-3 text-red-700"><strong>Required scopes:</strong> boards:read, pins:read, pins:write, user_accounts:read</p>
+                  </div>
+                )}
+                
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">App ID</label>
@@ -626,6 +714,81 @@ export default function SettingsPage() {
                 </div>
                 <p className="text-xs text-gray-500 mt-2">
                   Redirect URI: <code className="bg-gray-100 px-1 rounded">{typeof window !== 'undefined' ? window.location.origin : ''}/api/auth/callback/pinterest</code>
+                </p>
+              </div>
+
+              {/* Twitter/X */}
+              <div className="p-6 bg-white rounded-lg border border-gray-200">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-black rounded-lg flex items-center justify-center">
+                      <span className="text-white font-bold text-sm">𝕏</span>
+                    </div>
+                    <div>
+                      <h3 className="font-medium text-gray-900">Twitter / X</h3>
+                      <p className="text-xs text-gray-500">
+                        <a href="https://developer.twitter.com/en/portal/dashboard" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                          Get credentials from Twitter Developer Portal →
+                        </a>
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {twitterConfigured && (
+                      <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full">Configured</span>
+                    )}
+                    <button
+                      onClick={() => setExpandedInstructions(expandedInstructions === 'twitter' ? null : 'twitter')}
+                      className="p-1 text-gray-500 hover:text-gray-700"
+                      aria-label="Toggle instructions"
+                    >
+                      {expandedInstructions === 'twitter' ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                    </button>
+                  </div>
+                </div>
+                
+                {expandedInstructions === 'twitter' && (
+                  <div className="mb-4 p-4 bg-gray-100 rounded-lg text-sm">
+                    <h4 className="font-medium text-gray-900 mb-2">How to get Twitter/X OAuth 2.0 credentials:</h4>
+                    <ol className="list-decimal list-inside space-y-2 text-gray-700">
+                      <li>Go to <a href="https://developer.twitter.com/en/portal/dashboard" target="_blank" rel="noopener noreferrer" className="underline">Twitter Developer Portal</a></li>
+                      <li>Sign up for a developer account if you haven&apos;t already (requires account verification)</li>
+                      <li>Create a new Project, then create an App within that project</li>
+                      <li>In your App settings, go to &quot;User authentication settings&quot; and click &quot;Set up&quot;</li>
+                      <li>Enable OAuth 2.0 and select &quot;Web App&quot; as the app type</li>
+                      <li>Add the Callback URL / Redirect URI shown below</li>
+                      <li>Set App permissions to &quot;Read and write&quot; to allow posting tweets</li>
+                      <li>Save and copy your Client ID and Client Secret from the &quot;Keys and tokens&quot; tab</li>
+                    </ol>
+                    <p className="mt-3 text-gray-600"><strong>Required scopes:</strong> tweet.read, tweet.write, users.read, offline.access</p>
+                    <p className="mt-2 text-gray-600"><strong>Note:</strong> Free tier allows 1,500 tweets/month. Basic tier ($100/month) allows 50,000 tweets/month.</p>
+                  </div>
+                )}
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Client ID</label>
+                    <input
+                      type="text"
+                      value={twitterClientId}
+                      onChange={(e) => setTwitterClientId(e.target.value)}
+                      placeholder="Enter Twitter Client ID"
+                      className="w-full px-3 py-2 border rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Client Secret</label>
+                    <input
+                      type="password"
+                      value={twitterClientSecret}
+                      onChange={(e) => setTwitterClientSecret(e.target.value)}
+                      placeholder={twitterConfigured ? '••••••••' : 'Enter Twitter Client Secret'}
+                      className="w-full px-3 py-2 border rounded-lg"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  Callback URI: <code className="bg-gray-100 px-1 rounded">{typeof window !== 'undefined' ? window.location.origin : ''}/api/auth/callback/twitter</code>
                 </p>
               </div>
 

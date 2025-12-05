@@ -39,7 +39,7 @@ export const supabaseAdmin = new Proxy({} as SupabaseClient, {
 });
 
 // Type definitions for database tables
-export type Platform = 'linkedin' | 'facebook' | 'instagram' | 'pinterest';
+export type Platform = 'linkedin' | 'facebook' | 'instagram' | 'pinterest' | 'twitter';
 
 export interface Niche {
   id: string;

@@ -5,7 +5,7 @@ interface PlatformCredentials {
   clientSecret: string | null;
 }
 
-export async function getPlatformCredentials(platform: 'linkedin' | 'facebook' | 'pinterest'): Promise<PlatformCredentials> {
+export async function getPlatformCredentials(platform: 'linkedin' | 'facebook' | 'pinterest' | 'twitter'): Promise<PlatformCredentials> {
   const idKey = platform === 'facebook' ? `${platform}_app_id` : `${platform}_client_id`;
   const secretKey = platform === 'facebook' ? `${platform}_app_secret` : `${platform}_client_secret`;
 
@@ -57,5 +57,13 @@ export async function getPinterestCredentials(): Promise<PlatformCredentials> {
   return {
     clientId: dbCreds.clientId || process.env.PINTEREST_APP_ID || null,
     clientSecret: dbCreds.clientSecret || process.env.PINTEREST_APP_SECRET || null,
+  };
+}
+
+export async function getTwitterCredentials(): Promise<PlatformCredentials> {
+  const dbCreds = await getPlatformCredentials('twitter');
+  return {
+    clientId: dbCreds.clientId || process.env.TWITTER_CLIENT_ID || null,
+    clientSecret: dbCreds.clientSecret || process.env.TWITTER_CLIENT_SECRET || null,
   };
 }

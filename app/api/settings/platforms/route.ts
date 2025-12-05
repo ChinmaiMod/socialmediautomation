@@ -8,6 +8,8 @@ interface PlatformCredentials {
   facebook_app_secret?: string;
   pinterest_app_id?: string;
   pinterest_app_secret?: string;
+  twitter_client_id?: string;
+  twitter_client_secret?: string;
 }
 
 function maskSecret(secret: string | null | undefined): string | null {
@@ -29,6 +31,8 @@ export async function GET() {
         'facebook_app_secret',
         'pinterest_app_id',
         'pinterest_app_secret',
+        'twitter_client_id',
+        'twitter_client_secret',
       ]);
 
     if (error) throw error;
@@ -61,6 +65,11 @@ export async function GET() {
           app_id: credentials.pinterest_app_id || null,
           app_secret: credentials.pinterest_app_secret || null,
           configured: !!(credentials.pinterest_app_id && credentials.pinterest_app_secret),
+        },
+        twitter: {
+          client_id: credentials.twitter_client_id || null,
+          client_secret: credentials.twitter_client_secret || null,
+          configured: !!(credentials.twitter_client_id && credentials.twitter_client_secret),
         },
       },
     });
@@ -98,6 +107,12 @@ export async function POST(request: NextRequest) {
     }
     if (body.pinterest_app_secret !== undefined && body.pinterest_app_secret !== '') {
       updates.push({ key: 'pinterest_app_secret', value: body.pinterest_app_secret });
+    }
+    if (body.twitter_client_id !== undefined) {
+      updates.push({ key: 'twitter_client_id', value: body.twitter_client_id });
+    }
+    if (body.twitter_client_secret !== undefined && body.twitter_client_secret !== '') {
+      updates.push({ key: 'twitter_client_secret', value: body.twitter_client_secret });
     }
 
     // Upsert each setting
