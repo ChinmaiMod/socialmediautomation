@@ -6,6 +6,7 @@ export const PLATFORM_LIMITS: Record<Platform, number> = {
   facebook: 63206,
   instagram: 2200,
   pinterest: 500,
+  twitter: 280,
 };
 
 // Optimal hashtag counts per platform
@@ -14,6 +15,7 @@ export const OPTIMAL_HASHTAGS: Record<Platform, { min: number; max: number }> = 
   facebook: { min: 1, max: 3 },
   instagram: { min: 5, max: 15 },
   pinterest: { min: 2, max: 5 },
+  twitter: { min: 1, max: 2 },
 };
 
 /**

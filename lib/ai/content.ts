@@ -7,7 +7,7 @@ export interface ContentGenerationParams {
     target_audience: string;
     content_themes: string[];
   };
-  platform: 'linkedin' | 'facebook' | 'instagram' | 'pinterest';
+  platform: 'linkedin' | 'facebook' | 'instagram' | 'pinterest' | 'twitter';
   tone: string;
   trend_topic?: string;
   viral_pattern?: {
@@ -42,6 +42,10 @@ const PLATFORM_GUIDELINES: Record<string, { maxLength: number; format: string }>
   pinterest: {
     maxLength: 500,
     format: 'Descriptive, keyword-rich. Focus on searchability and saving value.',
+  },
+  twitter: {
+    maxLength: 280,
+    format: 'Concise and punchy. Hook in first line. Use threads for longer content. Hashtags sparingly (1-2 max).',
   },
 };
 

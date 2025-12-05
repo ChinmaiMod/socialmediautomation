@@ -63,6 +63,7 @@ export function formatPlatformName(platform: Platform): string {
     facebook: 'Facebook',
     instagram: 'Instagram',
     pinterest: 'Pinterest',
+    twitter: 'Twitter/X',
   };
   return names[platform] || platform;
 }
@@ -76,6 +77,7 @@ export function getPlatformColor(platform: Platform): string {
     facebook: '#1877F2',
     instagram: '#E4405F',
     pinterest: '#BD081C',
+    twitter: '#000000',
   };
   return colors[platform] || '#666666';
 }
