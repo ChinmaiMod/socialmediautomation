@@ -24,8 +24,13 @@ jest.mock('@/lib/auth', () => ({
 const mockSignIn = require('@/lib/auth').signIn as jest.Mock;
 
 describe('Login Page', () => {
+  const fetchMock = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true }) });
+
   beforeEach(() => {
     jest.clearAllMocks();
+    fetchMock.mockClear();
+    // @ts-expect-error allow assignment for tests
+    global.fetch = fetchMock;
   });
 
   it('shows success message and redirects to fallback / when no redirect param present', async () => {
@@ -41,6 +46,7 @@ describe('Login Page', () => {
     await userEvent.click(submit);
 
     await waitFor(() => expect(mockSignIn).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(await screen.findByText(/Login successful/i)).toBeInTheDocument();
     await waitFor(() => expect(replaceMock).toHaveBeenCalledWith('/'));
   });
@@ -60,6 +66,7 @@ describe('Login Page', () => {
     await userEvent.click(submit);
 
     await waitFor(() => expect(mockSignIn).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     await waitFor(() => expect(replaceMock).toHaveBeenCalledWith('/dashboard'));
   });
 
@@ -78,6 +85,7 @@ describe('Login Page', () => {
     await userEvent.click(submit);
 
     await waitFor(() => expect(mockSignIn).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     await waitFor(() => expect(replaceMock).toHaveBeenCalledWith('/'));
   });
 });

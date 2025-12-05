@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase, getCurrentUser } from './auth';
+import { syncSessionCookie } from './sessionCookie';
 
 interface AuthContextType {
   user: User | null;
@@ -25,15 +26,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check current session
-    getCurrentUser().then(({ user }) => {
-      setUser(user);
-      setLoading(false);
-    });
+    async function bootstrap() {
+      const [{ user }, { data }] = await Promise.all([
+        getCurrentUser(),
+        supabase.auth.getSession(),
+      ]);
 
-    // Listen for auth changes
+      setUser(user);
+      if (data.session) {
+        void syncSessionCookie(data.session);
+      }
+      setLoading(false);
+    }
+
+    void bootstrap();
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
+      void syncSessionCookie(session ?? null);
     });
 
     return () => {
@@ -43,6 +53,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
+    await syncSessionCookie(null);
     setUser(null);
   };
 

@@ -2,41 +2,50 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
+const publicRoutes = ['/login', '/register'];
+
+function redirectToLogin(request: NextRequest, pathname: string) {
+  const loginUrl = new URL('/login', request.url);
+  loginUrl.searchParams.set('redirect', pathname);
+  return NextResponse.redirect(loginUrl);
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-
-  // Public routes that don't require authentication
-  const publicRoutes = ['/login', '/register'];
   const isPublicRoute = publicRoutes.some(route => pathname.startsWith(route));
 
-  // Allow public routes and static files
   if (isPublicRoute || pathname.startsWith('/_next') || pathname.startsWith('/api/auth')) {
     return NextResponse.next();
   }
 
-  // Get session from cookie
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (!supabaseUrl || !supabaseAnonKey) {
     throw new Error('Supabase environment variables are not configured.');
   }
+
+  const accessToken = request.cookies.get('sb-access-token')?.value;
+
+  if (!accessToken) {
+    return redirectToLogin(request, pathname);
+  }
   
   const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: false,
+    },
     global: {
       headers: {
-        cookie: request.headers.get('cookie') ?? '',
+        Authorization: `Bearer ${accessToken}`,
       },
     },
   });
 
-  const { data: { session } } = await supabase.auth.getSession();
+  const { data, error } = await supabase.auth.getUser(accessToken);
 
-  // Redirect to login if not authenticated
-  if (!session) {
-    const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('redirect', pathname);
-    return NextResponse.redirect(loginUrl);
+  if (error || !data.user) {
+    return redirectToLogin(request, pathname);
   }
 
   return NextResponse.next();

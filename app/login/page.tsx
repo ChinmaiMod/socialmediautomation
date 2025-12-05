@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Mail, Lock, Zap, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { signIn } from '@/lib/auth';
+import { syncSessionCookie } from '@/lib/sessionCookie';
 
 type Feedback = {
   variant: 'error' | 'success';
@@ -67,6 +68,7 @@ function LoginPageContent() {
       } else if (!data.session) {
         setFeedback({ variant: 'error', message: 'We could not start a session. Confirm your email or reset your password, then try again.' });
       } else if (data.session) {
+        await syncSessionCookie(data.session);
         setFeedback({ variant: 'success', message: 'Login successful! Redirecting to your dashboard…' });
         setTimeout(() => {
           // Replace navigation with the provided redirect param (or fallback to '/')
