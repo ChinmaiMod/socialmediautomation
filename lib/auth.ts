@@ -2,8 +2,10 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 let cachedClient: SupabaseClient | null = null;
 
-function ensureEnvVar(key: string) {
-  const value = process.env[key];
+const publicSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const publicSupabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+function ensureEnvVar(value: string | undefined, key: string) {
   if (!value) {
     throw new Error(`Missing required environment variable: ${key}`);
   }
@@ -11,8 +13,8 @@ function ensureEnvVar(key: string) {
 }
 
 function createSupabaseClient(): SupabaseClient {
-  const supabaseUrl = ensureEnvVar('NEXT_PUBLIC_SUPABASE_URL');
-  const supabaseAnonKey = ensureEnvVar('NEXT_PUBLIC_SUPABASE_ANON_KEY');
+  const supabaseUrl = ensureEnvVar(publicSupabaseUrl, 'NEXT_PUBLIC_SUPABASE_URL');
+  const supabaseAnonKey = ensureEnvVar(publicSupabaseAnonKey, 'NEXT_PUBLIC_SUPABASE_ANON_KEY');
   return createClient(supabaseUrl, supabaseAnonKey);
 }
 

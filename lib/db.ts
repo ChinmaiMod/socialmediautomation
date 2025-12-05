@@ -3,8 +3,10 @@ import { supabase, getSupabaseClient } from './auth';
 
 export { supabase };
 
-function ensureEnvVar(key: string) {
-  const value = process.env[key];
+const publicSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+function ensureEnvVar(value: string | undefined, key: string) {
   if (!value) {
     throw new Error(`Missing required environment variable: ${key}`);
   }
@@ -14,12 +16,11 @@ function ensureEnvVar(key: string) {
 let supabaseAdminClient: SupabaseClient | null = null;
 
 function createSupabaseAdminClient(): SupabaseClient {
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseServiceKey) {
+  if (!supabaseServiceRoleKey) {
     return getSupabaseClient();
   }
-  const supabaseUrl = ensureEnvVar('NEXT_PUBLIC_SUPABASE_URL');
-  return createClient(supabaseUrl, supabaseServiceKey);
+  const supabaseUrl = ensureEnvVar(publicSupabaseUrl, 'NEXT_PUBLIC_SUPABASE_URL');
+  return createClient(supabaseUrl, supabaseServiceRoleKey);
 }
 
 function getSupabaseAdminClient(): SupabaseClient {
