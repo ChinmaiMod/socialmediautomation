@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Mail, Lock, Zap, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { signIn } from '@/lib/auth';
@@ -36,6 +36,8 @@ function getFriendlyLoginError(message?: string, status?: number) {
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectParam = (searchParams?.get('redirect') as string) || '/';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -67,8 +69,8 @@ export default function LoginPage() {
       } else if (data.user) {
         setFeedback({ variant: 'success', message: 'Login successful! Redirecting to your dashboard…' });
         setTimeout(() => {
-          router.replace('/');
-          router.refresh();
+          // Replace navigation with the provided redirect param (or fallback to '/')
+          void router.replace(redirectParam);
         }, 600);
       }
     } catch (err: any) {
