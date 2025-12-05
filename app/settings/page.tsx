@@ -2,10 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import ModelSelector from '@/components/settings/ModelSelector';
-import { Settings, Cpu, FileText, Search, Zap } from 'lucide-react';
+import { Settings, Cpu, FileText, Search, Zap, Link2 } from 'lucide-react';
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<'models' | 'automation' | 'integrations'>('models');
+  const [activeTab, setActiveTab] = useState<'models' | 'automation' | 'integrations' | 'platforms'>('models');
   const [maskedCron, setMaskedCron] = useState<string | null>(null);
   const [newCronSecret, setNewCronSecret] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -17,6 +17,20 @@ export default function SettingsPage() {
   const [isOpenrouterProcessing, setIsOpenrouterProcessing] = useState<boolean>(false);
   const [openrouterError, setOpenrouterError] = useState<string | null>(null);
   const [openrouterSuccess, setOpenrouterSuccess] = useState<string | null>(null);
+
+  // Platform credentials state
+  const [platformsLoading, setPlatformsLoading] = useState(false);
+  const [platformsError, setPlatformsError] = useState<string | null>(null);
+  const [platformsSuccess, setPlatformsSuccess] = useState<string | null>(null);
+  const [linkedinClientId, setLinkedinClientId] = useState('');
+  const [linkedinClientSecret, setLinkedinClientSecret] = useState('');
+  const [linkedinConfigured, setLinkedinConfigured] = useState(false);
+  const [facebookAppId, setFacebookAppId] = useState('');
+  const [facebookAppSecret, setFacebookAppSecret] = useState('');
+  const [facebookConfigured, setFacebookConfigured] = useState(false);
+  const [pinterestAppId, setPinterestAppId] = useState('');
+  const [pinterestAppSecret, setPinterestAppSecret] = useState('');
+  const [pinterestConfigured, setPinterestConfigured] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -59,6 +73,73 @@ export default function SettingsPage() {
     fetchIntegration();
     return () => { mounted = false; };
   }, [activeTab]);
+
+  // Fetch platform credentials when tab is active
+  useEffect(() => {
+    if (activeTab !== 'platforms') return;
+    let mounted = true;
+    const fetchPlatforms = async () => {
+      setPlatformsLoading(true);
+      try {
+        const res = await fetch('/api/settings/platforms');
+        const payload = await res.json();
+        if (!mounted) return;
+        if (res.ok && payload.success) {
+          setLinkedinClientId(payload.data.linkedin?.client_id || '');
+          setLinkedinConfigured(payload.data.linkedin?.configured || false);
+          setFacebookAppId(payload.data.facebook?.app_id || '');
+          setFacebookConfigured(payload.data.facebook?.configured || false);
+          setPinterestAppId(payload.data.pinterest?.app_id || '');
+          setPinterestConfigured(payload.data.pinterest?.configured || false);
+        }
+      } catch (err) {
+        // ignore
+      } finally {
+        setPlatformsLoading(false);
+      }
+    };
+    fetchPlatforms();
+    return () => { mounted = false; };
+  }, [activeTab]);
+
+  const savePlatformCredentials = async () => {
+    setPlatformsError(null);
+    setPlatformsSuccess(null);
+    setPlatformsLoading(true);
+    try {
+      const res = await fetch('/api/settings/platforms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          linkedin_client_id: linkedinClientId,
+          linkedin_client_secret: linkedinClientSecret || undefined,
+          facebook_app_id: facebookAppId,
+          facebook_app_secret: facebookAppSecret || undefined,
+          pinterest_app_id: pinterestAppId,
+          pinterest_app_secret: pinterestAppSecret || undefined,
+        }),
+      });
+      const payload = await res.json();
+      if (!res.ok || !payload.success) throw new Error(payload.error || 'Failed to save');
+      setPlatformsSuccess('Platform credentials saved successfully');
+      // Clear secrets after save
+      setLinkedinClientSecret('');
+      setFacebookAppSecret('');
+      setPinterestAppSecret('');
+      // Refetch to update configured status
+      const refetch = await fetch('/api/settings/platforms');
+      const refetchPayload = await refetch.json();
+      if (refetch.ok && refetchPayload.success) {
+        setLinkedinConfigured(refetchPayload.data.linkedin?.configured || false);
+        setFacebookConfigured(refetchPayload.data.facebook?.configured || false);
+        setPinterestConfigured(refetchPayload.data.pinterest?.configured || false);
+      }
+    } catch (err: any) {
+      setPlatformsError(err.message || 'Failed to save credentials');
+    } finally {
+      setPlatformsLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -113,6 +194,19 @@ export default function SettingsPage() {
             <span className="flex items-center gap-2">
               <Settings className="w-4 h-4" />
               Integrations
+            </span>
+          </button>
+          <button
+            onClick={() => setActiveTab('platforms')}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'platforms'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <Link2 className="w-4 h-4" />
+              Social Platforms
             </span>
           </button>
         </div>
@@ -370,6 +464,179 @@ export default function SettingsPage() {
                 {openrouterSuccess && <p className="text-sm text-green-600 mt-2">{openrouterSuccess}</p>}
                 {openrouterError && <p className="text-sm text-red-600 mt-2">{openrouterError}</p>}
                 <div className="mt-3 text-xs text-gray-500">Stored key: {openrouterMasked ?? 'Not set'}</div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'platforms' && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Social Platform Credentials</h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  Configure OAuth credentials for each social media platform. Get these from each platform&apos;s developer portal.
+                </p>
+              </div>
+
+              {platformsError && (
+                <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                  {platformsError}
+                </div>
+              )}
+              {platformsSuccess && (
+                <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">
+                  {platformsSuccess}
+                </div>
+              )}
+
+              {/* LinkedIn */}
+              <div className="p-6 bg-white rounded-lg border border-gray-200">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+                      <span className="text-white font-bold text-sm">in</span>
+                    </div>
+                    <div>
+                      <h3 className="font-medium text-gray-900">LinkedIn</h3>
+                      <p className="text-xs text-gray-500">
+                        <a href="https://www.linkedin.com/developers/apps" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                          Get credentials from LinkedIn Developer Portal →
+                        </a>
+                      </p>
+                    </div>
+                  </div>
+                  {linkedinConfigured && (
+                    <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full">Configured</span>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Client ID</label>
+                    <input
+                      type="text"
+                      value={linkedinClientId}
+                      onChange={(e) => setLinkedinClientId(e.target.value)}
+                      placeholder="Enter LinkedIn Client ID"
+                      className="w-full px-3 py-2 border rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Client Secret</label>
+                    <input
+                      type="password"
+                      value={linkedinClientSecret}
+                      onChange={(e) => setLinkedinClientSecret(e.target.value)}
+                      placeholder={linkedinConfigured ? '••••••••' : 'Enter LinkedIn Client Secret'}
+                      className="w-full px-3 py-2 border rounded-lg"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  Redirect URI: <code className="bg-gray-100 px-1 rounded">{typeof window !== 'undefined' ? window.location.origin : ''}/api/auth/callback/linkedin</code>
+                </p>
+              </div>
+
+              {/* Facebook / Instagram */}
+              <div className="p-6 bg-white rounded-lg border border-gray-200">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
+                      <span className="text-white font-bold text-sm">f</span>
+                    </div>
+                    <div>
+                      <h3 className="font-medium text-gray-900">Facebook / Instagram</h3>
+                      <p className="text-xs text-gray-500">
+                        <a href="https://developers.facebook.com/apps" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                          Get credentials from Meta Developer Portal →
+                        </a>
+                      </p>
+                    </div>
+                  </div>
+                  {facebookConfigured && (
+                    <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full">Configured</span>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">App ID</label>
+                    <input
+                      type="text"
+                      value={facebookAppId}
+                      onChange={(e) => setFacebookAppId(e.target.value)}
+                      placeholder="Enter Facebook App ID"
+                      className="w-full px-3 py-2 border rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">App Secret</label>
+                    <input
+                      type="password"
+                      value={facebookAppSecret}
+                      onChange={(e) => setFacebookAppSecret(e.target.value)}
+                      placeholder={facebookConfigured ? '••••••••' : 'Enter Facebook App Secret'}
+                      className="w-full px-3 py-2 border rounded-lg"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  Redirect URIs: Add both Facebook and Instagram callback URLs in Meta Developer settings
+                </p>
+              </div>
+
+              {/* Pinterest */}
+              <div className="p-6 bg-white rounded-lg border border-gray-200">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-red-500 rounded-lg flex items-center justify-center">
+                      <span className="text-white font-bold text-sm">P</span>
+                    </div>
+                    <div>
+                      <h3 className="font-medium text-gray-900">Pinterest</h3>
+                      <p className="text-xs text-gray-500">
+                        <a href="https://developers.pinterest.com/apps" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                          Get credentials from Pinterest Developer Portal →
+                        </a>
+                      </p>
+                    </div>
+                  </div>
+                  {pinterestConfigured && (
+                    <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full">Configured</span>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">App ID</label>
+                    <input
+                      type="text"
+                      value={pinterestAppId}
+                      onChange={(e) => setPinterestAppId(e.target.value)}
+                      placeholder="Enter Pinterest App ID"
+                      className="w-full px-3 py-2 border rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">App Secret</label>
+                    <input
+                      type="password"
+                      value={pinterestAppSecret}
+                      onChange={(e) => setPinterestAppSecret(e.target.value)}
+                      placeholder={pinterestConfigured ? '••••••••' : 'Enter Pinterest App Secret'}
+                      className="w-full px-3 py-2 border rounded-lg"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  Redirect URI: <code className="bg-gray-100 px-1 rounded">{typeof window !== 'undefined' ? window.location.origin : ''}/api/auth/callback/pinterest</code>
+                </p>
+              </div>
+
+              <div className="flex justify-end">
+                <button
+                  onClick={savePlatformCredentials}
+                  disabled={platformsLoading}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {platformsLoading ? 'Saving...' : 'Save Credentials'}
+                </button>
               </div>
             </div>
           )}

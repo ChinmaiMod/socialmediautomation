@@ -1,18 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
+import { getPinterestCredentials } from '@/lib/platformCredentials';
+
+export const dynamic = 'force-dynamic';
 
 // Initiate Pinterest OAuth flow
 export async function GET(request: NextRequest) {
+  const { clientId } = await getPinterestCredentials();
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+
+  if (!clientId) {
+    const errorUrl = new URL('/accounts/connect', request.url);
+    errorUrl.searchParams.set('error', 'Pinterest is not configured. Please add credentials in Settings → Integrations.');
+    return NextResponse.redirect(errorUrl.toString());
+  }
+
+  if (!appUrl) {
+    const errorUrl = new URL('/accounts/connect', request.url);
+    errorUrl.searchParams.set('error', 'App URL not configured.');
+    return NextResponse.redirect(errorUrl.toString());
+  }
+
   const state = uuidv4();
-  
-  const clientId = process.env.PINTEREST_APP_ID;
-  const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/callback/pinterest`;
+  const redirectUri = `${appUrl}/api/auth/callback/pinterest`;
   
   // Pinterest scopes for posting
   const scope = encodeURIComponent('user_accounts:read,pins:read,pins:write,boards:read,boards:write');
   
   const authUrl = new URL('https://www.pinterest.com/oauth/');
-  authUrl.searchParams.set('client_id', clientId!);
+  authUrl.searchParams.set('client_id', clientId);
   authUrl.searchParams.set('redirect_uri', redirectUri);
   authUrl.searchParams.set('response_type', 'code');
   authUrl.searchParams.set('scope', scope);
