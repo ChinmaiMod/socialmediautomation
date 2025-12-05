@@ -14,6 +14,7 @@ jest.mock('openai', () => {
 
 // Mock db module
 jest.mock('../../db', () => ({
+  __esModule: true,
   default: {
     getSettings: jest.fn().mockResolvedValue({}),
     getSetting: jest.fn().mockResolvedValue(undefined),
