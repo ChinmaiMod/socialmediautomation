@@ -3,11 +3,60 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Mail, Lock, User, Zap, AlertCircle } from 'lucide-react';
+import type { User } from '@supabase/supabase-js';
+import { Mail, Lock, User as UserIcon, Zap, AlertCircle } from 'lucide-react';
 import { signUp } from '@/lib/auth';
+
+function getEmailRedirectUrl() {
+  if (typeof window !== 'undefined' && window.location) {
+    return `${window.location.origin.replace(/\/$/, '')}/login`;
+  }
+
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+  if (siteUrl) {
+    return `${siteUrl.replace(/\/$/, '')}/login`;
+  }
+
+  const vercelUrl = process.env.NEXT_PUBLIC_VERCEL_URL;
+  if (vercelUrl) {
+    const normalized = vercelUrl.startsWith('http') ? vercelUrl : `https://${vercelUrl}`;
+    return `${normalized.replace(/\/$/, '')}/login`;
+  }
+
+  return undefined;
+}
+
+const DUPLICATE_EMAIL_MESSAGE = 'This email is already registered. Try signing in or resetting your password instead.';
+
+function isDuplicateRegistrationResponse(user?: User | null) {
+  return Boolean(user && Array.isArray(user.identities) && user.identities.length === 0);
+}
+
+function getFriendlyRegistrationError(message?: string) {
+  if (!message) return 'Registration failed. Please try again.';
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes('already registered') || normalized.includes('duplicate')) {
+    return DUPLICATE_EMAIL_MESSAGE;
+  }
+
+  if (normalized.includes('password')) {
+    return 'Supabase rejected the password. Please choose a stronger password and try again.';
+  }
+
+  return message;
+}
 
 export default function RegisterPage() {
   const router = useRouter();
+  const originHint = typeof window !== 'undefined' && window.location
+    ? window.location.origin
+    : (process.env.NEXT_PUBLIC_SITE_URL
+      || (process.env.NEXT_PUBLIC_VERCEL_URL
+        ? (process.env.NEXT_PUBLIC_VERCEL_URL.startsWith('http')
+          ? process.env.NEXT_PUBLIC_VERCEL_URL
+          : `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`)
+        : 'your production URL'));
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -39,18 +88,26 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      const { data, error } = await signUp(email, password, fullName);
+      const redirectTo = getEmailRedirectUrl();
+      const { data, error } = await signUp(email, password, fullName, redirectTo);
 
       if (error) {
-        setError(error.message);
-      } else {
-        setSuccess(true);
-        setTimeout(() => {
-          router.push('/login');
-        }, 2000);
+        setError(getFriendlyRegistrationError(error.message));
+        return;
       }
+
+      if (isDuplicateRegistrationResponse(data?.user)) {
+        setError(DUPLICATE_EMAIL_MESSAGE);
+        return;
+      }
+
+      setSuccess(true);
+      setTimeout(() => {
+        router.push('/login');
+      }, 2000);
     } catch (err: any) {
-      setError(err.message || 'Registration failed');
+      const friendly = err?.message ? getFriendlyRegistrationError(err.message) : 'Registration failed. Please try again.';
+      setError(friendly);
     } finally {
       setLoading(false);
     }
@@ -67,6 +124,10 @@ export default function RegisterPage() {
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Registration Successful!</h2>
           <p className="text-gray-600">Please check your email to verify your account.</p>
+          <p className="text-sm text-gray-500 mt-4">
+            If the confirmation link opens with <code>localhost</code>, replace the domain with {originHint}
+            {' '}before visiting.
+          </p>
           <p className="text-sm text-gray-500 mt-4">Redirecting to login...</p>
         </div>
       </div>
@@ -152,7 +213,7 @@ export default function RegisterPage() {
                   Full Name
                 </label>
                 <div className="relative">
-                  <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <UserIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
                   <input
                     type="text"
                     value={fullName}
