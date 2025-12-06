@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { 
@@ -12,7 +12,9 @@ import {
   AlertCircle,
   Loader2,
   Zap,
-  Settings
+  Settings,
+  CheckCircle,
+  XCircle
 } from 'lucide-react';
 import { useAuth } from '@/lib/AuthProvider';
 
@@ -24,6 +26,14 @@ interface PlatformConfig {
   bgColor: string;
   description: string;
   connected: boolean;
+  configured?: boolean;
+}
+
+interface PlatformStatus {
+  linkedin: { configured: boolean };
+  facebook: { configured: boolean };
+  pinterest: { configured: boolean };
+  twitter: { configured: boolean };
 }
 
 export default function ConnectAccountPage() {
@@ -31,6 +41,36 @@ export default function ConnectAccountPage() {
   const { user, loading: authLoading } = useAuth();
   const [connecting, setConnecting] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [platformStatus, setPlatformStatus] = useState<PlatformStatus | null>(null);
+  const [statusLoading, setStatusLoading] = useState(true);
+
+  // Fetch platform configuration status
+  useEffect(() => {
+    const fetchPlatformStatus = async () => {
+      try {
+        const res = await fetch('/api/settings/platforms');
+        const data = await res.json();
+        if (data.success) {
+          setPlatformStatus(data.data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch platform status:', err);
+      } finally {
+        setStatusLoading(false);
+      }
+    };
+    fetchPlatformStatus();
+  }, []);
+
+  const getPlatformConfigured = (platformId: string): boolean => {
+    if (!platformStatus) return false;
+    // Instagram uses Facebook credentials
+    if (platformId === 'instagram') {
+      return platformStatus.facebook?.configured || false;
+    }
+    const status = platformStatus as unknown as Record<string, { configured: boolean }>;
+    return status[platformId]?.configured || false;
+  };
 
   const platforms: PlatformConfig[] = [
     {
@@ -166,24 +206,42 @@ export default function ConnectAccountPage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {platforms.map((platform) => (
+          {platforms.map((platform) => {
+            const isConfigured = getPlatformConfigured(platform.id);
+            return (
             <div
               key={platform.id}
-              className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"
+              className={`bg-white rounded-xl shadow-sm border overflow-hidden ${isConfigured ? 'border-gray-200' : 'border-gray-200 opacity-75'}`}
             >
-              <div className={`h-2 ${platform.bgColor}`} />
+              <div className={`h-2 ${isConfigured ? platform.bgColor : 'bg-gray-300'}`} />
               <div className="p-6">
                 <div className="flex items-start gap-4">
-                  <div className={`p-3 rounded-lg ${platform.bgColor} text-white`}>
+                  <div className={`p-3 rounded-lg ${isConfigured ? platform.bgColor : 'bg-gray-400'} text-white`}>
                     {platform.icon}
                   </div>
                   <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-gray-900">{platform.name}</h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-lg font-semibold text-gray-900">{platform.name}</h3>
+                      {!statusLoading && (
+                        isConfigured ? (
+                          <span className="flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
+                            <CheckCircle className="w-3 h-3" />
+                            Configured
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                            <XCircle className="w-3 h-3" />
+                            Not Configured
+                          </span>
+                        )
+                      )}
+                    </div>
                     <p className="text-sm text-gray-500 mt-1">{platform.description}</p>
                   </div>
                 </div>
 
                 <div className="mt-6">
+                  {isConfigured ? (
                   <button
                     onClick={() => handleConnect(platform.id)}
                     disabled={connecting === platform.id}
@@ -201,10 +259,19 @@ export default function ConnectAccountPage() {
                       </>
                     )}
                   </button>
+                  ) : (
+                    <Link
+                      href="/settings"
+                      className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gray-200 text-gray-600 rounded-lg font-medium hover:bg-gray-300 transition-colors"
+                    >
+                      <Settings className="w-5 h-5" />
+                      Configure in Settings
+                    </Link>
+                  )}
                 </div>
               </div>
             </div>
-          ))}
+          )})}
         </div>
 
         <div className="mt-8 p-6 bg-blue-50 rounded-xl">
