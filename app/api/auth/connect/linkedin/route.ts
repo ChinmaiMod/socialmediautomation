@@ -20,7 +20,8 @@ export async function GET(request: NextRequest) {
 
   const state = uuidv4();
   const redirectUri = `${appUrl}/api/auth/callback/linkedin`;
-  const scope = encodeURIComponent('openid profile email w_member_social');
+  // Don't encode - searchParams.set handles it
+  const scope = 'openid profile email w_member_social';
   
   const authUrl = new URL('https://www.linkedin.com/oauth/v2/authorization');
   authUrl.searchParams.set('response_type', 'code');

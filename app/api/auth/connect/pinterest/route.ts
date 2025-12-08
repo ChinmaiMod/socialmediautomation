@@ -21,8 +21,8 @@ export async function GET(request: NextRequest) {
   const state = uuidv4();
   const redirectUri = `${appUrl}/api/auth/callback/pinterest`;
   
-  // Pinterest scopes for posting
-  const scope = encodeURIComponent('user_accounts:read,pins:read,pins:write,boards:read,boards:write');
+  // Pinterest scopes for posting (don't encode - searchParams.set handles it)
+  const scope = 'user_accounts:read,pins:read,pins:write,boards:read,boards:write';
   
   const authUrl = new URL('https://www.pinterest.com/oauth/');
   authUrl.searchParams.set('client_id', clientId);

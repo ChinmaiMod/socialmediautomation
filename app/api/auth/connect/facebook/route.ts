@@ -21,8 +21,8 @@ export async function GET(request: NextRequest) {
   const state = uuidv4();
   const redirectUri = `${appUrl}/api/auth/callback/facebook`;
   
-  // Permissions for posting to pages
-  const scope = encodeURIComponent('public_profile,email,pages_show_list,pages_read_engagement,pages_manage_posts');
+  // Permissions for posting to pages (don't encode - searchParams.set handles it)
+  const scope = 'public_profile,email,pages_show_list,pages_read_engagement,pages_manage_posts';
   
   const authUrl = new URL('https://www.facebook.com/v18.0/dialog/oauth');
   authUrl.searchParams.set('client_id', clientId);

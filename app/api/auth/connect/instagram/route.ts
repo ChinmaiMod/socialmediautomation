@@ -21,8 +21,8 @@ export async function GET(request: NextRequest) {
   const state = uuidv4();
   const redirectUri = `${appUrl}/api/auth/callback/instagram`;
   
-  // Instagram requires these specific permissions
-  const scope = encodeURIComponent('instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement');
+  // Instagram requires these specific permissions (don't encode - searchParams.set handles it)
+  const scope = 'instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement';
   
   const authUrl = new URL('https://www.facebook.com/v18.0/dialog/oauth');
   authUrl.searchParams.set('client_id', clientId);
