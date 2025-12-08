@@ -52,6 +52,8 @@ export default function ConnectAccountPage() {
         const data = await res.json();
         if (data.success) {
           setPlatformStatus(data.data);
+        } else {
+          console.error('Failed to fetch platform status:', data.error);
         }
       } catch (err) {
         console.error('Failed to fetch platform status:', err);
@@ -206,7 +208,13 @@ export default function ConnectAccountPage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {platforms.map((platform) => {
+          {statusLoading ? (
+            <div className="col-span-2 flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+              <span className="ml-3 text-gray-600">Loading platforms...</span>
+            </div>
+          ) : (
+          platforms.map((platform) => {
             const isConfigured = getPlatformConfigured(platform.id);
             return (
             <div
@@ -271,7 +279,8 @@ export default function ConnectAccountPage() {
                 </div>
               </div>
             </div>
-          )})}
+          )})
+          )}
         </div>
 
         <div className="mt-8 p-6 bg-blue-50 rounded-xl">
