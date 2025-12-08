@@ -9,13 +9,23 @@ export async function GET(request: NextRequest) {
     const niche_id = searchParams.get('niche_id');
     const is_active = searchParams.get('is_active');
 
-    const accounts = await db.getAccounts({
-      platform: platform || undefined,
-      niche_id: niche_id || undefined,
-      is_active: is_active !== null ? is_active === 'true' : undefined,
-    });
+    // Use supabaseAdmin to bypass RLS and fetch all accounts
+    let query = supabaseAdmin.from('accounts').select('*');
+    if (platform) query = query.eq('platform', platform);
+    if (niche_id) query = query.eq('niche_id', niche_id);
+    if (is_active !== null) query = query.eq('is_active', is_active === 'true');
+    
+    const { data: accounts, error } = await query.order('name');
+    
+    if (error) {
+      console.error('Error fetching accounts:', error);
+      return NextResponse.json(
+        { error: 'Failed to fetch accounts' },
+        { status: 500 }
+      );
+    }
 
-    return NextResponse.json({ accounts });
+    return NextResponse.json({ accounts: accounts || [] });
   } catch (error) {
     console.error('Error fetching accounts:', error);
     return NextResponse.json(
