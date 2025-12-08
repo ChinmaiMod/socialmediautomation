@@ -48,7 +48,9 @@ export async function GET(request: NextRequest) {
     // Exchange code for access token
     const clientId = process.env.FACEBOOK_APP_ID;
     const clientSecret = process.env.FACEBOOK_APP_SECRET;
-    const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/callback/instagram`;
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 
+      `${request.headers.get('x-forwarded-proto') || 'https'}://${request.headers.get('host')}`;
+    const redirectUri = `${appUrl}/api/auth/callback/instagram`;
 
     const tokenUrl = new URL('https://graph.facebook.com/v18.0/oauth/access_token');
     tokenUrl.searchParams.set('client_id', clientId!);

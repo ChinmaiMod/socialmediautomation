@@ -48,7 +48,9 @@ export async function GET(request: NextRequest) {
     // Exchange code for access token
     const clientId = process.env.PINTEREST_APP_ID;
     const clientSecret = process.env.PINTEREST_APP_SECRET;
-    const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/callback/pinterest`;
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 
+      `${request.headers.get('x-forwarded-proto') || 'https'}://${request.headers.get('host')}`;
+    const redirectUri = `${appUrl}/api/auth/callback/pinterest`;
 
     const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
 

@@ -7,17 +7,14 @@ export const dynamic = 'force-dynamic';
 // Initiate LinkedIn OAuth flow
 export async function GET(request: NextRequest) {
   const { clientId } = await getLinkedInCredentials();
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+  
+  // Get app URL from env or derive from request
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 
+    `${request.headers.get('x-forwarded-proto') || 'https'}://${request.headers.get('host')}`;
 
   if (!clientId) {
     const errorUrl = new URL('/accounts/connect', request.url);
     errorUrl.searchParams.set('error', 'LinkedIn is not configured. Please add credentials in Settings → Integrations.');
-    return NextResponse.redirect(errorUrl.toString());
-  }
-
-  if (!appUrl) {
-    const errorUrl = new URL('/accounts/connect', request.url);
-    errorUrl.searchParams.set('error', 'App URL not configured.');
     return NextResponse.redirect(errorUrl.toString());
   }
 

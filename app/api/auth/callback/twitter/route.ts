@@ -55,7 +55,9 @@ export async function GET(request: NextRequest) {
 
     // Get credentials from database
     const { clientId, clientSecret } = await getTwitterCredentials();
-    const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/callback/twitter`;
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 
+      `${request.headers.get('x-forwarded-proto') || 'https'}://${request.headers.get('host')}`;
+    const redirectUri = `${appUrl}/api/auth/callback/twitter`;
 
     if (!clientId || !clientSecret) {
       return NextResponse.redirect(
