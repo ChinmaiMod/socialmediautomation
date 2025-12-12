@@ -30,8 +30,8 @@ interface ScheduledPost {
   id: string;
   content: string;
   platform: string;
-  scheduled_time: string;
-  status: 'pending' | 'posted' | 'failed';
+  scheduled_at: string;
+  status: 'scheduled' | 'posted' | 'failed';
   created_at: string;
 }
 
@@ -50,7 +50,7 @@ export default function SchedulePage() {
 
   async function fetchScheduledPosts() {
     try {
-      const response = await fetch('/api/posts?status=pending');
+      const response = await fetch('/api/posts?status=scheduled');
       const data = await response.json();
       if (data.success) {
         setPosts(data.data || []);
@@ -112,7 +112,7 @@ export default function SchedulePage() {
 
   // Group posts by date
   const groupedPosts = posts.reduce((acc: Record<string, ScheduledPost[]>, post) => {
-    const date = new Date(post.scheduled_time).toLocaleDateString();
+    const date = new Date(post.scheduled_at).toLocaleDateString();
     if (!acc[date]) acc[date] = [];
     acc[date].push(post);
     return acc;
@@ -263,7 +263,7 @@ export default function SchedulePage() {
                             <p className="text-gray-600 text-sm line-clamp-2">{post.content}</p>
                             <div className="flex items-center gap-2 mt-2 text-xs text-gray-400">
                               <Clock className="w-3 h-3" />
-                              {new Date(post.scheduled_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              {new Date(post.scheduled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </div>
                           </div>
                           <div className="flex items-center gap-2">

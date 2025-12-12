@@ -1,16 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
 import { db, Account, supabaseAdmin } from '@/lib/db';
 
 // GET /api/accounts - List all accounts
 export async function GET(request: NextRequest) {
   try {
+    const cookieStore = cookies();
+    const authClient = createServerComponentClient({ cookies: () => cookieStore });
+    const { data: { user } } = await authClient.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const platform = searchParams.get('platform') as Account['platform'] | null;
     const niche_id = searchParams.get('niche_id');
     const is_active = searchParams.get('is_active');
 
-    // Use supabaseAdmin to bypass RLS and fetch all accounts
-    let query = supabaseAdmin.from('accounts').select('*');
+    // Use supabaseAdmin for reliability, but ALWAYS scope by user_id.
+    let query = supabaseAdmin.from('accounts').select('*').eq('user_id', user.id);
     if (platform) query = query.eq('platform', platform);
     if (niche_id) query = query.eq('niche_id', niche_id);
     if (is_active !== null) query = query.eq('is_active', is_active === 'true');
@@ -38,6 +48,13 @@ export async function GET(request: NextRequest) {
 // POST /api/accounts - Create a new account
 export async function POST(request: NextRequest) {
   try {
+    const cookieStore = cookies();
+    const authClient = createServerComponentClient({ cookies: () => cookieStore });
+    const { data: { user } } = await authClient.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
     
     // Validate required fields
@@ -58,6 +75,8 @@ export async function POST(request: NextRequest) {
     }
 
     const account = await db.createAccount({
+      // user_id exists in DB but is not currently typed on Account.
+      user_id: user.id as any,
       name: body.name,
       platform: body.platform,
       niche_id: body.niche_id || null,
@@ -70,7 +89,7 @@ export async function POST(request: NextRequest) {
       posting_schedule: body.posting_schedule || { times: ['08:00', '14:00', '19:00'], timezone: 'UTC' },
       tone: body.tone || 'professional',
       custom_instructions: body.custom_instructions || null,
-    });
+    } as any);
 
     // Create default viral definition for the account
     await db.upsertViralDefinition({
@@ -114,6 +133,13 @@ export async function POST(request: NextRequest) {
 // PUT /api/accounts - Update an account
 export async function PUT(request: NextRequest) {
   try {
+    const cookieStore = cookies();
+    const authClient = createServerComponentClient({ cookies: () => cookieStore });
+    const { data: { user } } = await authClient.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
     
     if (!body.id) {
@@ -121,6 +147,18 @@ export async function PUT(request: NextRequest) {
         { error: 'Account ID is required' },
         { status: 400 }
       );
+    }
+
+    // Ensure only the owner can update.
+    const { data: owned, error: ownedError } = await supabaseAdmin
+      .from('accounts')
+      .select('id')
+      .eq('id', body.id)
+      .eq('user_id', user.id)
+      .maybeSingle();
+    if (ownedError) throw ownedError;
+    if (!owned) {
+      return NextResponse.json({ error: 'Account not found' }, { status: 404 });
     }
 
     const account = await db.updateAccount(body.id, {
@@ -151,6 +189,13 @@ export async function PUT(request: NextRequest) {
 // DELETE /api/accounts - Delete an account
 export async function DELETE(request: NextRequest) {
   try {
+    const cookieStore = cookies();
+    const authClient = createServerComponentClient({ cookies: () => cookieStore });
+    const { data: { user } } = await authClient.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
@@ -159,6 +204,17 @@ export async function DELETE(request: NextRequest) {
         { error: 'Account ID is required' },
         { status: 400 }
       );
+    }
+
+    const { data: owned, error: ownedError } = await supabaseAdmin
+      .from('accounts')
+      .select('id')
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .maybeSingle();
+    if (ownedError) throw ownedError;
+    if (!owned) {
+      return NextResponse.json({ error: 'Account not found' }, { status: 404 });
     }
 
     await db.deleteAccount(id);

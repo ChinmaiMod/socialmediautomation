@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
       .from('posts')
       .select('*')
       .eq('user_id', user.id)
-      .order('scheduled_time', { ascending: true })
+      .order('scheduled_at', { ascending: true })
       .limit(limit);
 
     if (status) {
@@ -57,37 +57,45 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { 
-      account_id, 
-      niche_id, 
-      content, 
-      hashtags, 
-      platform,
-      scheduled_time,
-      viral_score,
-      trend_used 
+    const {
+      account_id,
+      content,
+      hashtags,
+      media_urls,
+      scheduled_at,
     } = body;
 
-    if (!content || !platform) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Content and platform are required' 
-      }, { status: 400 });
+    if (!account_id || !content) {
+      return NextResponse.json(
+        { success: false, error: 'account_id and content are required' },
+        { status: 400 }
+      );
     }
+
+    // Derive platform from the account to avoid mismatches.
+    const { data: account, error: accountError } = await supabase
+      .from('accounts')
+      .select('id, platform')
+      .eq('id', account_id)
+      .eq('user_id', user.id)
+      .single();
+    if (accountError) throw accountError;
+
+    const scheduleIso = typeof scheduled_at === 'string' && scheduled_at.trim().length > 0
+      ? scheduled_at
+      : new Date(Date.now() + 60 * 60 * 1000).toISOString();
 
     const { data, error } = await supabase
       .from('posts')
       .insert({
         user_id: user.id,
-        account_id: account_id || null,
-        niche_id: niche_id || null,
+        account_id,
+        platform: account.platform,
         content,
-        hashtags: hashtags || [],
-        platform,
-        scheduled_time: scheduled_time || new Date().toISOString(),
-        viral_score: viral_score || 0,
-        trend_used: trend_used || null,
-        status: 'pending',
+        hashtags: Array.isArray(hashtags) ? hashtags : [],
+        media_urls: Array.isArray(media_urls) ? media_urls : [],
+        status: 'scheduled',
+        scheduled_at: scheduleIso,
       })
       .select()
       .single();

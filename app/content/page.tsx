@@ -110,6 +110,7 @@ export default function ContentPage() {
   const [validationSuggestions, setValidationSuggestions] = useState<string[]>([]);
   const [validatingTopic, setValidatingTopic] = useState(false);
   const [activePattern, setActivePattern] = useState<PatternPreset | null>(null);
+  const [postingNow, setPostingNow] = useState(false);
 
   useEffect(() => {
     if (!authLoading && user) {
@@ -329,6 +330,50 @@ export default function ContentPage() {
   async function handleLogout() {
     await signOut();
     router.push('/login');
+  }
+
+  async function handlePostNow() {
+    if (postingNow) return;
+    if (selectedAccountIds.length === 0) {
+      setError('Select at least one account to post');
+      return;
+    }
+
+    setPostingNow(true);
+    setError('');
+
+    try {
+      const postPromises = selectedAccountIds.map(async (accountId) => {
+        const result = generatedResults[accountId];
+        if (!result) {
+          throw new Error('Generate content first before posting');
+        }
+
+        const res = await fetch('/api/post', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'post',
+            account_id: accountId,
+            content: result.content.content,
+            hashtags: result.content.hashtags,
+          }),
+        });
+
+        const data = await res.json();
+        if (!res.ok || data.success === false) {
+          throw new Error(data.error || 'Failed to post to one of the accounts');
+        }
+        return data;
+      });
+
+      await Promise.all(postPromises);
+      router.push('/history');
+    } catch (err: any) {
+      setError(err.message || 'Failed to post');
+    } finally {
+      setPostingNow(false);
+    }
   }
 
   const generatedAccountList = useMemo(() => Object.values(generatedResults), [generatedResults]);
@@ -791,10 +836,12 @@ export default function ContentPage() {
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <button
+                          onClick={handlePostNow}
+                          disabled={postingNow}
                           className="flex items-center justify-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition"
                         >
                           <Send className="w-5 h-5" />
-                          Post Now
+                          {postingNow ? 'Posting...' : 'Post Now'}
                         </button>
                         <button
                           className="flex items-center justify-center gap-2 px-6 py-3 border border-blue-200 text-blue-600 rounded-lg font-medium hover:bg-blue-50 transition"

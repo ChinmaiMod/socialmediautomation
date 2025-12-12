@@ -3,6 +3,88 @@ import { db, supabaseAdmin } from '@/lib/db';
 import { generateContent } from '@/lib/ai/content';
 import { researchTrendingTopics } from '@/lib/ai/trends';
 import { predictViralPotential } from '@/lib/utils/scoring';
+import { publishToPlatform } from '@/lib/social/publish';
+
+type PostingSchedule = {
+  times?: string[];
+  timezone?: string;
+};
+
+function safeStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((v) => (typeof v === 'string' ? v.trim() : '')).filter(Boolean);
+}
+
+function safeTimezone(value: unknown): string {
+  if (typeof value !== 'string' || value.trim().length === 0) return 'UTC';
+  return value.trim();
+}
+
+function parseTimeHHMM(value: string): { hour: number; minute: number } | null {
+  const match = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(value);
+  if (!match) return null;
+  return { hour: parseInt(match[1], 10), minute: parseInt(match[2], 10) };
+}
+
+function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+
+  const parts = dtf.formatToParts(date);
+  const lookup = (type: string) => parts.find((p) => p.type === type)?.value;
+  const year = parseInt(lookup('year') || '0', 10);
+  const month = parseInt(lookup('month') || '1', 10);
+  const day = parseInt(lookup('day') || '1', 10);
+  const hour = parseInt(lookup('hour') || '0', 10);
+  const minute = parseInt(lookup('minute') || '0', 10);
+  const second = parseInt(lookup('second') || '0', 10);
+
+  const asIfUtc = Date.UTC(year, month - 1, day, hour, minute, second);
+  return (asIfUtc - date.getTime()) / 60000;
+}
+
+function getZonedDateParts(now: Date, timeZone: string): { year: number; month: number; day: number } {
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const parts = dtf.formatToParts(now);
+  const lookup = (type: string) => parts.find((p) => p.type === type)?.value;
+  return {
+    year: parseInt(lookup('year') || '1970', 10),
+    month: parseInt(lookup('month') || '1', 10),
+    day: parseInt(lookup('day') || '1', 10),
+  };
+}
+
+function zonedTimeToUtc(dateParts: { year: number; month: number; day: number }, time: { hour: number; minute: number }, timeZone: string): Date {
+  // Start with a UTC guess and adjust by the zone offset at that instant.
+  const utcGuess = new Date(Date.UTC(dateParts.year, dateParts.month - 1, dateParts.day, time.hour, time.minute, 0));
+  const offsetMinutes = getTimeZoneOffsetMinutes(utcGuess, timeZone);
+  return new Date(utcGuess.getTime() - offsetMinutes * 60000);
+}
+
+async function alreadyProcessedSlot(accountId: string, scheduledAtIsoUtc: string): Promise<boolean> {
+  const { data, error } = await supabaseAdmin
+    .from('posts')
+    .select('id,status')
+    .eq('account_id', accountId)
+    .eq('scheduled_at', scheduledAtIsoUtc)
+    .in('status', ['posted', 'failed'])
+    .limit(1);
+  if (error) throw error;
+  return (data || []).length > 0;
+}
 
 // Verify cron secret to prevent unauthorized access
 async function verifyCronSecret(request: NextRequest): Promise<boolean> {
@@ -51,26 +133,150 @@ export async function GET(request: NextRequest) {
     account_name: string;
     platform: string;
     post_id?: string;
+    scheduled_at?: string;
+    skipped?: boolean;
     error?: string;
   }[] = [];
 
   try {
+    // 1) Publish any due scheduled posts (created via /api/post action=schedule)
+    // This runs regardless of automation profiles.
+    const nowIso = new Date().toISOString();
+    const dueLimit = 25;
+    const { data: duePosts, error: dueError } = await supabaseAdmin
+      .from('posts')
+      .select(`
+        id,
+        account_id,
+        platform,
+        content,
+        media_urls,
+        hashtags,
+        scheduled_at,
+        status,
+        accounts:accounts!inner(*)
+      `)
+      .eq('status', 'scheduled')
+      .lte('scheduled_at', nowIso)
+      .order('scheduled_at', { ascending: true })
+      .limit(dueLimit);
+    if (dueError) throw dueError;
+
+    for (const row of duePosts || []) {
+      try {
+        const post = row as any;
+        const account = post.accounts;
+        if (!account || !account.is_active) {
+          const { error: updErr } = await supabaseAdmin
+            .from('posts')
+            .update({ status: 'failed' })
+            .eq('id', post.id);
+          if (updErr) throw updErr;
+
+          results.push({
+            success: false,
+            account_id: post.account_id,
+            account_name: account?.name || 'Unknown',
+            platform: post.platform,
+            post_id: post.id,
+            scheduled_at: post.scheduled_at,
+            error: 'Account not found or inactive',
+          });
+          continue;
+        }
+
+        const publishResult = await publishToPlatform({
+          account,
+          content: post.content,
+          hashtags: Array.isArray(post.hashtags) ? post.hashtags : [],
+          media_urls: Array.isArray(post.media_urls) ? post.media_urls : [],
+        });
+
+        if (publishResult.success) {
+          const { error: updErr } = await supabaseAdmin
+            .from('posts')
+            .update({
+              status: 'posted',
+              posted_at: new Date().toISOString(),
+              external_post_id: publishResult.external_post_id || null,
+              post_url: publishResult.post_url || null,
+            })
+            .eq('id', post.id);
+          if (updErr) throw updErr;
+
+          results.push({
+            success: true,
+            account_id: post.account_id,
+            account_name: account.name,
+            platform: post.platform,
+            post_id: post.id,
+            scheduled_at: post.scheduled_at,
+          });
+        } else {
+          const { error: updErr } = await supabaseAdmin
+            .from('posts')
+            .update({ status: 'failed' })
+            .eq('id', post.id);
+          if (updErr) throw updErr;
+
+          results.push({
+            success: false,
+            account_id: post.account_id,
+            account_name: account.name,
+            platform: post.platform,
+            post_id: post.id,
+            scheduled_at: post.scheduled_at,
+            error: publishResult.error || 'Failed to publish',
+          });
+        }
+      } catch (err) {
+        console.error('Error publishing scheduled post', err);
+        results.push({
+          success: false,
+          account_id: (row as any).account_id,
+          account_name: (row as any).accounts?.name || 'Unknown',
+          platform: (row as any).platform,
+          post_id: (row as any).id,
+          scheduled_at: (row as any).scheduled_at,
+          error: err instanceof Error ? err.message : 'Unknown error',
+        });
+      }
+    }
+
     // Get all enabled automation profiles
     const profiles = await db.getEnabledAutomationProfiles();
     
     if (profiles.length === 0) {
+      const duration_ms = Date.now() - startTime;
+      const successful = results.filter(r => r.success && !r.skipped).length;
+      const failed = results.filter(r => !r.success).length;
+      const skipped = results.filter(r => r.skipped).length;
+
       return NextResponse.json({
         message: 'No enabled automation profiles found',
-        results: [],
-        duration_ms: Date.now() - startTime,
+        results,
+        summary: {
+          total_profiles: 0,
+          successful,
+          failed,
+          skipped,
+          duration_ms,
+        },
+        duration_ms,
       });
     }
 
     // Process each enabled profile
     for (const profile of profiles) {
       try {
-        // Get account details
-        const account = await db.getAccount(profile.account_id);
+        // Get account details (cron runs without a user session; use admin client)
+        const { data: account, error: accountError } = await supabaseAdmin
+          .from('accounts')
+          .select('*')
+          .eq('id', profile.account_id)
+          .single();
+        if (accountError) throw accountError;
+
         if (!account || !account.is_active) {
           results.push({
             success: false,
@@ -78,6 +284,39 @@ export async function GET(request: NextRequest) {
             account_name: 'Unknown',
             platform: 'unknown',
             error: 'Account not found or inactive',
+          });
+          continue;
+        }
+
+        // Determine if this account should post right now based on its schedule
+        const scheduleRaw = (account as any).posting_schedule as PostingSchedule | undefined;
+        const timezone = safeTimezone(scheduleRaw?.timezone);
+        const times = safeStringArray(scheduleRaw?.times);
+        const cronWindowMinutes = 6; // allows running every 5 minutes without missing a slot
+        const now = new Date();
+        const nowMs = now.getTime();
+
+        const todayParts = getZonedDateParts(now, timezone);
+
+        const dueSlotsUtc: Date[] = [];
+        for (const t of times.length ? times : ['08:00', '14:00', '19:00']) {
+          const parsed = parseTimeHHMM(t);
+          if (!parsed) continue;
+          const scheduledUtc = zonedTimeToUtc(todayParts, parsed, timezone);
+          const start = scheduledUtc.getTime();
+          const end = start + cronWindowMinutes * 60 * 1000;
+          if (nowMs >= start && nowMs <= end) {
+            dueSlotsUtc.push(scheduledUtc);
+          }
+        }
+
+        if (dueSlotsUtc.length === 0) {
+          results.push({
+            success: true,
+            skipped: true,
+            account_id: account.id,
+            account_name: account.name,
+            platform: account.platform,
           });
           continue;
         }
@@ -171,26 +410,93 @@ export async function GET(request: NextRequest) {
           pattern_success_rate: patterns.length > 0 ? patterns[0].success_rate : undefined,
         });
 
-        // Create the post (in a real implementation, this would also post to the social platform)
-        const post = await db.createPost({
-          account_id: account.id,
-          platform: account.platform,
-          content: generatedContent.content,
-          hashtags: generatedContent.hashtags,
-          trend_topic: trendTopic || null,
-          pattern_id: patterns.length > 0 ? patterns[0].id : null,
-          predicted_viral_score,
-          status: 'posted',
-          posted_at: new Date().toISOString(),
-        });
+        // Post at each due slot (usually 1), idempotent via scheduled_at
+        for (const scheduledUtc of dueSlotsUtc.slice(0, Math.max(1, profile.batch_size || 1))) {
+          const scheduledAtIsoUtc = scheduledUtc.toISOString();
 
-        results.push({
-          success: true,
-          account_id: account.id,
-          account_name: account.name,
-          platform: account.platform,
-          post_id: post.id,
-        });
+          if (await alreadyProcessedSlot(account.id, scheduledAtIsoUtc)) {
+            results.push({
+              success: true,
+              skipped: true,
+              account_id: account.id,
+              account_name: account.name,
+              platform: account.platform,
+              scheduled_at: scheduledAtIsoUtc,
+            });
+            continue;
+          }
+
+          const publishResult = await publishToPlatform({
+            account,
+            content: generatedContent.content,
+            hashtags: generatedContent.hashtags,
+            media_urls: Array.isArray((generatedContent as any).media_urls) ? (generatedContent as any).media_urls : [],
+          });
+
+          const basePost = {
+            user_id: (account as any).user_id,
+            account_id: account.id,
+            platform: account.platform,
+            content: generatedContent.content,
+            media_urls: [],
+            hashtags: generatedContent.hashtags,
+            trend_topic: trendTopic || null,
+            pattern_id: patterns.length > 0 ? patterns[0].id : null,
+            predicted_viral_score,
+            scheduled_at: scheduledAtIsoUtc,
+          };
+
+          if (publishResult.success) {
+            const { data: post, error: postError } = await supabaseAdmin
+              .from('posts')
+              .insert({
+                ...basePost,
+                status: 'posted',
+                posted_at: new Date().toISOString(),
+                external_post_id: publishResult.external_post_id || null,
+                post_url: publishResult.post_url || null,
+              })
+              .select()
+              .single();
+            if (postError) throw postError;
+
+            results.push({
+              success: true,
+              account_id: account.id,
+              account_name: account.name,
+              platform: account.platform,
+              scheduled_at: scheduledAtIsoUtc,
+              post_id: post.id,
+            });
+          } else {
+            const { data: post, error: postError } = await supabaseAdmin
+              .from('posts')
+              .insert({
+                ...basePost,
+                status: 'failed',
+                posted_at: null,
+                external_post_id: null,
+                post_url: null,
+              })
+              .select()
+              .single();
+            if (postError) throw postError;
+
+            results.push({
+              success: false,
+              account_id: account.id,
+              account_name: account.name,
+              platform: account.platform,
+              scheduled_at: scheduledAtIsoUtc,
+              post_id: post.id,
+              error: publishResult.error || 'Failed to publish',
+            });
+
+            if (profile.error_handling === 'stop') {
+              break;
+            }
+          }
+        }
 
       } catch (accountError) {
         console.error(`Error processing account ${profile.account_id}:`, accountError);
@@ -210,16 +516,18 @@ export async function GET(request: NextRequest) {
     }
 
     const duration_ms = Date.now() - startTime;
-    const successful = results.filter(r => r.success).length;
+    const successful = results.filter(r => r.success && !r.skipped).length;
     const failed = results.filter(r => !r.success).length;
+    const skipped = results.filter(r => r.skipped).length;
 
     return NextResponse.json({
-      message: `Cron job completed. ${successful} successful, ${failed} failed.`,
+      message: `Cron job completed. ${successful} published, ${failed} failed, ${skipped} skipped.`,
       results,
       summary: {
         total_profiles: profiles.length,
         successful,
         failed,
+        skipped,
         duration_ms,
       },
     });

@@ -1,17 +1,56 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
+import { db, supabaseAdmin } from '@/lib/db';
 import { generateContent } from '@/lib/ai/content';
 import { predictViralPotential } from '@/lib/utils/scoring';
+import { publishToPlatform } from '@/lib/social/publish';
+
+type PostAction = 'generate' | 'draft' | 'schedule' | 'post';
+
+function normalizeHashtags(hashtags: unknown): string[] {
+  if (!Array.isArray(hashtags)) return [];
+  return hashtags
+    .map((h) => (typeof h === 'string' ? h.trim() : ''))
+    .filter(Boolean)
+    .map((h) => (h.startsWith('#') ? h.slice(1) : h));
+}
+
+function normalizeMediaUrls(mediaUrls: unknown): string[] {
+  if (!Array.isArray(mediaUrls)) return [];
+  return mediaUrls.map((u) => (typeof u === 'string' ? u.trim() : '')).filter(Boolean);
+}
 
 // GET /api/post - Get posts
 export async function GET(request: NextRequest) {
   try {
+    const cookieStore = cookies();
+    const authClient = createServerComponentClient({ cookies: () => cookieStore });
+    const { data: { user } } = await authClient.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const account_id = searchParams.get('account_id');
     const platform = searchParams.get('platform') as 'linkedin' | 'facebook' | 'instagram' | 'pinterest' | null;
     const status = searchParams.get('status');
     const limit = searchParams.get('limit');
     const offset = searchParams.get('offset');
+
+    // Extra safety: ensure the account belongs to the user when filtering by account_id.
+    if (account_id) {
+      const { data: ownedAccount, error: accountError } = await supabaseAdmin
+        .from('accounts')
+        .select('id')
+        .eq('id', account_id)
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (accountError) throw accountError;
+      if (!ownedAccount) {
+        return NextResponse.json({ error: 'Account not found' }, { status: 404 });
+      }
+    }
 
     const posts = await db.getPosts({
       account_id: account_id || undefined,
@@ -34,14 +73,30 @@ export async function GET(request: NextRequest) {
 // POST /api/post - Generate and optionally post content
 export async function POST(request: NextRequest) {
   try {
+    const cookieStore = cookies();
+    const authClient = createServerComponentClient({ cookies: () => cookieStore });
+    const { data: { user } } = await authClient.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
-    const { 
-      account_id, 
-      trend_topic, 
-      pattern_id, 
-      action = 'draft',  // 'draft', 'schedule', 'post'
+    const {
+      account_id,
+      trend_topic,
+      pattern_id,
+      action = 'generate',
       scheduled_at,
+      content,
+      hashtags,
+      media_urls,
+      // These may be passed by the client, but we primarily rely on the stored account.
+      niche: nicheFromClient,
+      tone: toneFromClient,
+      custom_instructions: customInstructionsFromClient,
     } = body;
+
+    const parsedAction: PostAction = action;
 
     if (!account_id) {
       return NextResponse.json(
@@ -50,8 +105,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get account details
-    const account = await db.getAccount(account_id);
+    // Get account details (must belong to user)
+    const { data: account, error: accountError } = await supabaseAdmin
+      .from('accounts')
+      .select('*')
+      .eq('id', account_id)
+      .eq('user_id', user.id)
+      .single();
+
+    if (accountError) {
+      console.error('Error fetching account:', accountError);
+      return NextResponse.json({ error: 'Failed to load account' }, { status: 500 });
+    }
+
     if (!account) {
       return NextResponse.json(
         { error: 'Account not found' },
@@ -95,15 +161,37 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Generate content using AI
-    const generatedContent = await generateContent({
-      niche,
-      platform: account.platform,
-      tone: account.tone,
-      trend_topic,
-      viral_pattern: viralPattern,
-      custom_instructions: account.custom_instructions || undefined,
-    });
+    const resolvedTone = typeof toneFromClient === 'string' && toneFromClient.trim().length > 0
+      ? toneFromClient
+      : (account.tone || 'professional');
+
+    const resolvedCustomInstructions = typeof customInstructionsFromClient === 'string' && customInstructionsFromClient.trim().length > 0
+      ? customInstructionsFromClient
+      : (account.custom_instructions || undefined);
+
+    // Determine content source:
+    // - action=generate always generates and does NOT persist
+    // - action=post/draft/schedule uses provided content if given, otherwise generates
+    const providedContent = typeof content === 'string' ? content : '';
+    const providedHashtags = normalizeHashtags(hashtags);
+    const providedMediaUrls = normalizeMediaUrls(media_urls);
+
+    const shouldGenerate = parsedAction === 'generate' || !providedContent.trim();
+
+    const generatedContent = shouldGenerate
+      ? await generateContent({
+          niche: nicheFromClient && typeof nicheFromClient === 'object' ? niche : niche,
+          platform: account.platform,
+          tone: resolvedTone,
+          trend_topic,
+          viral_pattern: viralPattern,
+          custom_instructions: resolvedCustomInstructions,
+        })
+      : {
+          content: providedContent,
+          hashtags: providedHashtags,
+          reasoning: '',
+        };
 
     // Predict viral potential
     const predicted_viral_score = predictViralPotential({
@@ -116,42 +204,99 @@ export async function POST(request: NextRequest) {
       pattern_success_rate: viralPattern ? 75 : undefined,
     });
 
-    // Determine status based on action
-    let status: 'draft' | 'scheduled' | 'posted' = 'draft';
-    let posted_at: string | null = null;
-
-    if (action === 'schedule' && scheduled_at) {
-      status = 'scheduled';
-    } else if (action === 'post') {
-      // In a real implementation, this would call the social platform API
-      // For now, we'll mark it as posted
-      status = 'posted';
-      posted_at = new Date().toISOString();
+    if (parsedAction === 'generate') {
+      return NextResponse.json({
+        success: true,
+        generated: {
+          content: generatedContent.content,
+          hashtags: generatedContent.hashtags,
+          predicted_viral_score,
+          reasoning: generatedContent.reasoning,
+        },
+      });
     }
 
-    // Create the post record
+    // Determine status based on action
+    let status: 'draft' | 'scheduled' | 'posted' | 'failed' = 'draft';
+    let scheduledAt: string | null = null;
+    if (parsedAction === 'schedule') {
+      status = 'scheduled';
+      scheduledAt = typeof scheduled_at === 'string' ? scheduled_at : new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    }
+
+    // Create the post record (persist)
     const post = await db.createPost({
+      user_id: user.id as any,
       account_id,
       platform: account.platform,
       content: generatedContent.content,
+      media_urls: providedMediaUrls,
       hashtags: generatedContent.hashtags,
       trend_topic: trend_topic || null,
       pattern_id: pattern_id || null,
       predicted_viral_score,
       status,
-      scheduled_at: scheduled_at || null,
-      posted_at,
-    });
+      scheduled_at: scheduledAt,
+      posted_at: null,
+    } as any);
 
-    return NextResponse.json({ 
-      post,
-      generated: {
+    // Publish now if requested
+    if (parsedAction === 'post') {
+      const publishResult = await publishToPlatform({
+        account,
         content: generatedContent.content,
         hashtags: generatedContent.hashtags,
-        predicted_viral_score,
-        reasoning: generatedContent.reasoning,
+        media_urls: providedMediaUrls,
+      });
+
+      if (publishResult.success) {
+        const updated = await db.updatePost(post.id, {
+          status: 'posted',
+          posted_at: new Date().toISOString(),
+          external_post_id: publishResult.external_post_id || null,
+          post_url: publishResult.post_url || null,
+        });
+
+        return NextResponse.json(
+          {
+            success: true,
+            post: updated,
+            published: {
+              external_post_id: publishResult.external_post_id || null,
+              post_url: publishResult.post_url || null,
+            },
+          },
+          { status: 201 }
+        );
       }
-    }, { status: 201 });
+
+      const updated = await db.updatePost(post.id, {
+        status: 'failed',
+      });
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: publishResult.error || 'Failed to publish',
+          post: updated,
+        },
+        { status: 502 }
+      );
+    }
+
+    return NextResponse.json(
+      {
+        success: true,
+        post,
+        generated: {
+          content: generatedContent.content,
+          hashtags: generatedContent.hashtags,
+          predicted_viral_score,
+          reasoning: generatedContent.reasoning,
+        },
+      },
+      { status: 201 }
+    );
   } catch (error) {
     console.error('Error creating post:', error);
     return NextResponse.json(
