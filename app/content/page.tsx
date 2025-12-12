@@ -139,14 +139,25 @@ export default function ContentPage() {
       setLoadingNiches(true);
       const response = await fetch('/api/niches');
       const data = await response.json();
-      if (data.success && data.data.length > 0) {
+      if (data.success && Array.isArray(data.data) && data.data.length > 0) {
         setNiches(data.data);
         const defaultNicheId = data.data[0].id;
         setSelectedNicheId(defaultNicheId);
         await Promise.all([fetchAccounts(defaultNicheId), fetchTrends(defaultNicheId)]);
+        return;
       }
+
+      if (data.success) {
+        setNiches([]);
+        setSelectedNicheId('');
+        setError('No niches found. Create one in the Niches page.');
+        return;
+      }
+
+      setError(data.error || 'Failed to load niches');
     } catch (err) {
       console.error('Failed to load niches:', err);
+      setError('Failed to load niches');
     } finally {
       setLoadingNiches(false);
     }
