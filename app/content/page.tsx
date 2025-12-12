@@ -212,9 +212,26 @@ export default function ContentPage() {
       const response = await fetch('/api/trends', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ niche_id: selectedNicheId }),
       });
-      const data = await response.json();
+
+      const text = await response.text();
+      let data: any = null;
+      try {
+        data = text ? JSON.parse(text) : null;
+      } catch {
+        data = null;
+      }
+
+      if (!response.ok) {
+        const message = (data && (data.error || data.message)) || (text || 'Failed to auto-research trends');
+        setError(typeof message === 'string' ? message : 'Failed to auto-research trends');
+        setAutoTrendTopics([]);
+        setSelectedAutoTrendId('');
+        return;
+      }
+
       setAutoTrendTopics(data.topics ?? []);
       if ((data.topics ?? []).length > 0) {
         setSelectedAutoTrendId(data.topics[0].id);

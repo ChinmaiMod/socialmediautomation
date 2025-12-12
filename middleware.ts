@@ -4,6 +4,42 @@ import { createClient } from '@supabase/supabase-js';
 
 const publicRoutes = ['/login', '/register'];
 
+function getProjectRefFromSupabaseUrl(supabaseUrl: string): string | null {
+  try {
+    const { hostname } = new URL(supabaseUrl);
+    const projectRef = hostname.split('.')[0];
+    return projectRef || null;
+  } catch {
+    return null;
+  }
+}
+
+function getSupabaseAuthCookieName(supabaseUrl: string): string | null {
+  const projectRef = getProjectRefFromSupabaseUrl(supabaseUrl);
+  if (!projectRef) return null;
+  return `sb-${projectRef}-auth-token`;
+}
+
+function tryReadAccessTokenFromAuthCookie(value: string | undefined): { accessToken?: string; refreshToken?: string } {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) {
+      return { accessToken: parsed[0], refreshToken: parsed[1] };
+    }
+    if (parsed && typeof parsed === 'object') {
+      return { accessToken: parsed.access_token, refreshToken: parsed.refresh_token };
+    }
+    return {};
+  } catch {
+    return {};
+  }
+}
+
+function buildSupabaseAuthCookieValue(accessToken: string, refreshToken: string) {
+  return JSON.stringify([accessToken, refreshToken, null, null, null]);
+}
+
 function redirectToLogin(request: NextRequest, pathname: string) {
   const loginUrl = new URL('/login', request.url);
   loginUrl.searchParams.set('redirect', pathname);
@@ -25,7 +61,12 @@ export async function middleware(request: NextRequest) {
     throw new Error('Supabase environment variables are not configured.');
   }
 
-  const accessToken = request.cookies.get('sb-access-token')?.value;
+  const authCookieName = getSupabaseAuthCookieName(supabaseUrl);
+  const authCookieValue = authCookieName ? request.cookies.get(authCookieName)?.value : undefined;
+  const fromAuthCookie = tryReadAccessTokenFromAuthCookie(authCookieValue);
+
+  const accessToken = request.cookies.get('sb-access-token')?.value ?? fromAuthCookie.accessToken;
+  const refreshToken = request.cookies.get('sb-refresh-token')?.value ?? fromAuthCookie.refreshToken;
 
   if (!accessToken) {
     return redirectToLogin(request, pathname);
@@ -48,7 +89,21 @@ export async function middleware(request: NextRequest) {
     return redirectToLogin(request, pathname);
   }
 
-  return NextResponse.next();
+  const response = NextResponse.next();
+
+  // Backfill the cookie format expected by @supabase/auth-helpers-nextjs.
+  // This prevents UI pages from loading while API routes return 401.
+  if (authCookieName && !authCookieValue && accessToken && refreshToken) {
+    response.cookies.set(authCookieName, buildSupabaseAuthCookieValue(accessToken, refreshToken), {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      path: '/',
+      maxAge: 60 * 60 * 24 * 30,
+    });
+  }
+
+  return response;
 }
 
 export const config = {

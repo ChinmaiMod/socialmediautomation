@@ -11,6 +11,7 @@ export async function syncSessionCookie(session: Session | null) {
     if (session) {
       await fetch(SESSION_ENDPOINT, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -21,7 +22,7 @@ export async function syncSessionCookie(session: Session | null) {
         }),
       });
     } else {
-      await fetch(SESSION_ENDPOINT, { method: 'DELETE' });
+      await fetch(SESSION_ENDPOINT, { method: 'DELETE', credentials: 'include' });
     }
   } catch (error) {
     console.error('Failed to sync auth session', error);
