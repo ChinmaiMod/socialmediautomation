@@ -1,10 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
 import { researchTrendingTopics, validateManualTopic } from '@/lib/ai/trends';
 
 // GET /api/trends - Get trending topics for a niche
 export async function GET(request: NextRequest) {
   try {
+    const cookieStore = cookies();
+    const supabase = createServerComponentClient({ cookies: () => cookieStore });
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const niche_id = searchParams.get('niche_id');
     const include_expired = searchParams.get('include_expired') === 'true';
@@ -16,10 +24,34 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get cached trending topics from database
-    const topics = await db.getTrendingTopics(niche_id, { includeExpired: include_expired });
+    // Ensure niche belongs to user
+    const { data: niche, error: nicheError } = await supabase
+      .from('niches')
+      .select('id')
+      .eq('id', niche_id)
+      .eq('user_id', user.id)
+      .maybeSingle();
 
-    return NextResponse.json({ topics });
+    if (nicheError) throw nicheError;
+    if (!niche) {
+      return NextResponse.json({ error: 'Niche not found' }, { status: 404 });
+    }
+
+    // Get cached trending topics
+    let query = supabase
+      .from('trending_topics')
+      .select('*')
+      .eq('niche_id', niche_id)
+      .eq('is_current_version', true);
+
+    if (!include_expired) {
+      query = query.gt('expires_at', new Date().toISOString());
+    }
+
+    const { data: topics, error } = await query.order('relevance_score', { ascending: false });
+    if (error) throw error;
+
+    return NextResponse.json({ topics: topics || [] });
   } catch (error) {
     console.error('Error fetching trends:', error);
     return NextResponse.json(
@@ -32,6 +64,13 @@ export async function GET(request: NextRequest) {
 // POST /api/trends - Research new trending topics
 export async function POST(request: NextRequest) {
   try {
+    const cookieStore = cookies();
+    const supabase = createServerComponentClient({ cookies: () => cookieStore });
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
     const { niche_id, max_results, recency_days } = body;
 
@@ -42,8 +81,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get niche details
-    const niche = await db.getNiche(niche_id);
+    // Get niche details (must belong to user)
+    const { data: niche, error: nicheError } = await supabase
+      .from('niches')
+      .select('*')
+      .eq('id', niche_id)
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (nicheError) throw nicheError;
     if (!niche) {
       return NextResponse.json(
         { error: 'Niche not found' },
@@ -63,19 +109,31 @@ export async function POST(request: NextRequest) {
     });
 
     // Expire old topics for this niche
-    await db.expireOldTopics(niche_id);
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    await supabase
+      .from('trending_topics')
+      .update({ is_current_version: false })
+      .eq('niche_id', niche_id)
+      .lt('source_published_at', sevenDaysAgo.toISOString());
 
     // Save new topics to database
     const savedTopics = await Promise.all(
       trendResults.map(async (topic) => {
-        return await db.createTrendingTopic({
-          niche_id,
-          topic: topic.topic,
-          source_url: topic.source_url,
-          source_published_at: topic.source_published_at,
-          relevance_score: topic.relevance_score,
-          is_current_version: topic.is_current_version,
-        });
+        const { data, error } = await supabase
+          .from('trending_topics')
+          .insert({
+            niche_id,
+            topic: topic.topic,
+            source_url: topic.source_url,
+            source_published_at: topic.source_published_at,
+            relevance_score: topic.relevance_score,
+            is_current_version: topic.is_current_version,
+          })
+          .select()
+          .single();
+        if (error) throw error;
+        return data;
       })
     );
 
@@ -99,6 +157,13 @@ export async function POST(request: NextRequest) {
 // PUT /api/trends/validate - Validate a manual topic
 export async function PUT(request: NextRequest) {
   try {
+    const cookieStore = cookies();
+    const supabase = createServerComponentClient({ cookies: () => cookieStore });
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
     const { topic, niche_id } = body;
 
@@ -112,10 +177,14 @@ export async function PUT(request: NextRequest) {
     // Get niche if provided
     let niche = { name: 'General', keywords: [] as string[] };
     if (niche_id) {
-      const nicheData = await db.getNiche(niche_id);
-      if (nicheData) {
-        niche = { name: nicheData.name, keywords: nicheData.keywords };
-      }
+      const { data: nicheData, error: nicheError } = await supabase
+        .from('niches')
+        .select('name, keywords')
+        .eq('id', niche_id)
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (nicheError) throw nicheError;
+      if (nicheData) niche = { name: nicheData.name, keywords: nicheData.keywords };
     }
 
     // Validate the topic

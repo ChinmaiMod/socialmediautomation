@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase, handleSupabaseError } from '@/lib/db';
+import { handleSupabaseError } from '@/lib/db';
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 
@@ -8,8 +8,8 @@ export async function GET(request: NextRequest) {
   try {
     // Get auth from cookies
     const cookieStore = cookies();
-    const authClient = createServerComponentClient({ cookies: () => cookieStore });
-    const { data: { user } } = await authClient.auth.getUser();
+    const supabase = createServerComponentClient({ cookies: () => cookieStore });
+    const { data: { user } } = await supabase.auth.getUser();
     
     if (!user) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
@@ -66,8 +66,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const cookieStore = cookies();
-    const authClient = createServerComponentClient({ cookies: () => cookieStore });
-    const { data: { user } } = await authClient.auth.getUser();
+    const supabase = createServerComponentClient({ cookies: () => cookieStore });
+    const { data: { user } } = await supabase.auth.getUser();
     
     if (!user) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
@@ -105,8 +105,8 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const cookieStore = cookies();
-    const authClient = createServerComponentClient({ cookies: () => cookieStore });
-    const { data: { user } } = await authClient.auth.getUser();
+    const supabase = createServerComponentClient({ cookies: () => cookieStore });
+    const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
@@ -153,8 +153,8 @@ export async function PUT(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const cookieStore = cookies();
-    const authClient = createServerComponentClient({ cookies: () => cookieStore });
-    const { data: { user } } = await authClient.auth.getUser();
+    const supabase = createServerComponentClient({ cookies: () => cookieStore });
+    const { data: { user } } = await supabase.auth.getUser();
     
     if (!user) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
