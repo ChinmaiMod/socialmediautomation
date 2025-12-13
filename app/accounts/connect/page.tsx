@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { 
   ArrowLeft,
@@ -38,11 +38,19 @@ interface PlatformStatus {
 
 export default function ConnectAccountPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, loading: authLoading } = useAuth();
   const [connecting, setConnecting] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [platformStatus, setPlatformStatus] = useState<PlatformStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
+
+  const selectedPlatform = searchParams.get('platform');
+  const isSelectingFacebookPage = selectedPlatform === 'facebook' && searchParams.get('select') === '1';
+
+  const [facebookPages, setFacebookPages] = useState<Array<{ id: string; name: string }>>([]);
+  const [facebookPagesLoading, setFacebookPagesLoading] = useState(false);
+  const [facebookPagesError, setFacebookPagesError] = useState('');
 
   // Fetch platform configuration status
   useEffect(() => {
@@ -63,6 +71,31 @@ export default function ConnectAccountPage() {
     };
     fetchPlatformStatus();
   }, []);
+
+  // If returning from Facebook OAuth with multiple Pages, load the Page list.
+  useEffect(() => {
+    if (!isSelectingFacebookPage) return;
+
+    const loadPages = async () => {
+      setFacebookPagesLoading(true);
+      setFacebookPagesError('');
+      try {
+        const res = await fetch('/api/auth/facebook/pages');
+        const payload = await res.json();
+        if (!res.ok || !payload?.success) {
+          setFacebookPagesError(payload?.error || 'Failed to load Facebook Pages');
+          return;
+        }
+        setFacebookPages(payload.data || []);
+      } catch (e: any) {
+        setFacebookPagesError(e?.message || 'Failed to load Facebook Pages');
+      } finally {
+        setFacebookPagesLoading(false);
+      }
+    };
+
+    loadPages();
+  }, [isSelectingFacebookPage]);
 
   const getPlatformConfigured = (platformId: string): boolean => {
     if (!platformStatus) return false;
@@ -138,6 +171,30 @@ export default function ConnectAccountPage() {
     window.location.href = `/api/auth/connect/${platformId}`;
   }
 
+  async function handleSelectFacebookPage(pageId: string) {
+    setConnecting('facebook');
+    setFacebookPagesError('');
+    try {
+      const res = await fetch('/api/auth/facebook/select-page', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ page_id: pageId }),
+      });
+      const payload = await res.json();
+
+      if (!res.ok || !payload?.success) {
+        setFacebookPagesError(payload?.error || 'Failed to connect Facebook Page');
+        return;
+      }
+
+      router.push('/accounts?success=facebook');
+    } catch (e: any) {
+      setFacebookPagesError(e?.message || 'Failed to connect Facebook Page');
+    } finally {
+      setConnecting(null);
+    }
+  }
+
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -152,6 +209,79 @@ export default function ConnectAccountPage() {
   if (!user) {
     router.push('/login');
     return null;
+  }
+
+  if (isSelectingFacebookPage) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <header className="bg-white border-b border-gray-200">
+          <div className="max-w-4xl mx-auto px-4 py-4">
+            <div className="flex items-center gap-4">
+              <Link
+                href="/accounts/connect"
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <ArrowLeft className="w-5 h-5 text-gray-600" />
+              </Link>
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-blue-600 rounded-lg">
+                  <Facebook className="w-5 h-5 text-white" />
+                </div>
+                <span className="text-xl font-bold text-gray-900">Select a Facebook Page</span>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <main className="max-w-4xl mx-auto px-4 py-8">
+          <div className="mb-6">
+            <p className="text-gray-600">
+              Choose which Business Page you want this app to post to.
+            </p>
+          </div>
+
+          {facebookPagesError && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-red-600">{facebookPagesError}</p>
+            </div>
+          )}
+
+          {facebookPagesLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+              <span className="ml-3 text-gray-600">Loading pages...</span>
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="p-6">
+                {facebookPages.length === 0 ? (
+                  <p className="text-sm text-gray-600">No pages found for this Facebook account.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {facebookPages.map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() => handleSelectFacebookPage(p.id)}
+                        disabled={connecting === 'facebook'}
+                        className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <span className="font-medium text-gray-900">{p.name}</span>
+                        {connecting === 'facebook' ? (
+                          <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
+                        ) : (
+                          <ExternalLink className="w-4 h-4 text-gray-500" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </main>
+      </div>
+    );
   }
 
   return (

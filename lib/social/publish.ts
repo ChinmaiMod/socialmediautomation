@@ -2,7 +2,7 @@ import axios from 'axios';
 
 import type { Account, Platform } from '@/lib/db';
 import { getLinkedInProfile, postToLinkedIn } from '@/lib/social/linkedin';
-import { getFacebookPages, postToFacebook } from '@/lib/social/facebook';
+import { postToFacebook } from '@/lib/social/facebook';
 import { postToInstagram } from '@/lib/social/instagram';
 import { getPinterestBoards, getPinterestProfile, postToPinterest } from '@/lib/social/pinterest';
 import { postToTwitter } from '@/lib/social/twitter';
@@ -120,15 +120,14 @@ export async function publishToPlatform(input: PublishInput): Promise<PublishRes
       }
 
       case 'facebook': {
-        const pages = await getFacebookPages(account.access_token);
-        if (!pages.length) {
-          return { success: false, error: 'No Facebook Pages found for this account (pages_manage_posts required)' };
+        const pageId = account.username;
+        if (!pageId) {
+          return { success: false, error: 'Facebook account is missing the Page ID. Please reconnect Facebook.' };
         }
-        const page = pages[0];
         const message = buildFullText(input.content, input.hashtags);
         const resp = await postToFacebook({
-          access_token: page.access_token,
-          page_id: page.id,
+          access_token: account.access_token,
+          page_id: pageId,
           message,
         });
         if (!resp.success) return { success: false, error: resp.error || 'Facebook post failed' };

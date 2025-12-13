@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
-import { supabase } from '@/lib/db';
+import { getFacebookCredentials } from '@/lib/platformCredentials';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,24 +38,29 @@ export async function GET(request: NextRequest) {
     }
 
     // Get authenticated user
-    const authClient = createServerComponentClient({ cookies: () => cookieStore });
-    const { data: { user } } = await authClient.auth.getUser();
+    const supabase = createServerComponentClient({ cookies: () => cookieStore });
+    const { data: { user } } = await supabase.auth.getUser();
     
     if (!user) {
       return NextResponse.redirect(new URL('/login', request.url));
     }
 
     // Exchange code for access token
-    const clientId = process.env.FACEBOOK_APP_ID;
-    const clientSecret = process.env.FACEBOOK_APP_SECRET;
+    const { clientId, clientSecret } = await getFacebookCredentials();
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 
       `${request.headers.get('x-forwarded-proto') || 'https'}://${request.headers.get('host')}`;
     const redirectUri = `${appUrl}/api/auth/callback/facebook`;
 
+    if (!clientId || !clientSecret) {
+      return NextResponse.redirect(
+        new URL('/accounts?error=Facebook+is+not+configured', request.url)
+      );
+    }
+
     const tokenUrl = new URL('https://graph.facebook.com/v18.0/oauth/access_token');
-    tokenUrl.searchParams.set('client_id', clientId!);
+    tokenUrl.searchParams.set('client_id', clientId);
     tokenUrl.searchParams.set('redirect_uri', redirectUri);
-    tokenUrl.searchParams.set('client_secret', clientSecret!);
+    tokenUrl.searchParams.set('client_secret', clientSecret);
     tokenUrl.searchParams.set('code', code);
 
     const tokenResponse = await fetch(tokenUrl.toString());
@@ -71,8 +76,8 @@ export async function GET(request: NextRequest) {
     // Get long-lived token
     const longLivedUrl = new URL('https://graph.facebook.com/v18.0/oauth/access_token');
     longLivedUrl.searchParams.set('grant_type', 'fb_exchange_token');
-    longLivedUrl.searchParams.set('client_id', clientId!);
-    longLivedUrl.searchParams.set('client_secret', clientSecret!);
+    longLivedUrl.searchParams.set('client_id', clientId);
+    longLivedUrl.searchParams.set('client_secret', clientSecret);
     longLivedUrl.searchParams.set('fb_exchange_token', tokenData.access_token);
 
     const longLivedResponse = await fetch(longLivedUrl.toString());
@@ -81,18 +86,27 @@ export async function GET(request: NextRequest) {
     const accessToken = longLivedData.access_token || tokenData.access_token;
     const expiresIn = longLivedData.expires_in || tokenData.expires_in || 5184000; // 60 days default
 
-    // Get user profile and pages
-    const profileUrl = new URL('https://graph.facebook.com/v18.0/me');
-    profileUrl.searchParams.set('fields', 'id,name,email');
-    profileUrl.searchParams.set('access_token', accessToken);
+    // Fetch Pages managed by the user. This allows a Buffer-like flow
+    // where the user selects which Business Page to connect.
+    const pagesUrl = new URL('https://graph.facebook.com/v18.0/me/accounts');
+    pagesUrl.searchParams.set('access_token', accessToken);
+    pagesUrl.searchParams.set('fields', 'id,name,access_token');
 
-    const profileResponse = await fetch(profileUrl.toString());
-    const profileData = await profileResponse.json();
+    const pagesResponse = await fetch(pagesUrl.toString());
+    const pagesData = await pagesResponse.json();
 
-    if (!profileResponse.ok || profileData.error) {
-      console.error('Facebook profile error:', profileData);
+    if (!pagesResponse.ok || pagesData.error) {
+      console.error('Facebook pages error:', pagesData);
       return NextResponse.redirect(
-        new URL('/accounts?error=Failed+to+fetch+profile', request.url)
+        new URL('/accounts?error=Failed+to+fetch+Facebook+Pages', request.url)
+      );
+    }
+
+    const pages: Array<{ id: string; name: string; access_token: string }> = pagesData.data || [];
+
+    if (pages.length === 0) {
+      return NextResponse.redirect(
+        new URL('/accounts?error=No+Facebook+Pages+found+(check+permissions)', request.url)
       );
     }
 
@@ -100,32 +114,57 @@ export async function GET(request: NextRequest) {
     const tokenExpiresAt = new Date();
     tokenExpiresAt.setSeconds(tokenExpiresAt.getSeconds() + expiresIn);
 
-    // Save account to database
-    const { error: dbError } = await supabase
-      .from('accounts')
-      .upsert({
-        user_id: user.id,
-        platform: 'facebook',
-        username: profileData.name,
-        profile_url: `https://www.facebook.com/${profileData.id}`,
-        access_token: accessToken,
-        token_expires_at: tokenExpiresAt.toISOString(),
-        is_active: true,
-      }, {
-        onConflict: 'user_id,platform,username',
-      });
+    // If there is exactly one Page, connect it immediately.
+    // Otherwise, store the user token briefly and redirect to a selection UI.
+    if (pages.length === 1) {
+      const page = pages[0];
 
-    if (dbError) {
-      console.error('Database error:', dbError);
-      return NextResponse.redirect(
-        new URL('/accounts?error=Failed+to+save+account', request.url)
-      );
+      const { error: dbError } = await supabase
+        .from('accounts')
+        .upsert(
+          {
+            user_id: user.id,
+            platform: 'facebook',
+            name: page.name,
+            username: page.id, // store Page ID
+            profile_url: `https://www.facebook.com/${page.id}`,
+            access_token: page.access_token, // store Page access token
+            token_expires_at: tokenExpiresAt.toISOString(),
+            is_active: true,
+          },
+          { onConflict: 'user_id,platform,username' }
+        );
+
+      if (dbError) {
+        console.error('Database error:', dbError);
+        return NextResponse.redirect(
+          new URL('/accounts?error=Failed+to+save+Facebook+Page', request.url)
+        );
+      }
+
+      const response = NextResponse.redirect(new URL('/accounts?success=facebook', request.url));
+      response.cookies.delete('facebook_oauth_state');
+      response.cookies.delete('facebook_user_access_token');
+      return response;
     }
 
-    // Clear the state cookie
-    const response = NextResponse.redirect(new URL('/accounts?success=facebook', request.url));
+    const response = NextResponse.redirect(new URL('/accounts/connect?platform=facebook&select=1', request.url));
+
+    // Save state + token briefly for the selection step.
     response.cookies.delete('facebook_oauth_state');
-    
+    response.cookies.set('facebook_user_access_token', accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 600, // 10 minutes
+    });
+    response.cookies.set('facebook_user_token_expires_at', tokenExpiresAt.toISOString(), {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 600,
+    });
+
     return response;
   } catch (error) {
     console.error('Facebook OAuth callback error:', error);
