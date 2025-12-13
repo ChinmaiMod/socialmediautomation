@@ -48,6 +48,28 @@ function redirectToLogin(request: NextRequest, pathname: string) {
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // Canonical domain redirect (prevents OAuth redirect_uri + cookie domain mismatches
+  // when the site is accessed via multiple Vercel aliases).
+  const canonicalAppUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (canonicalAppUrl && (request.method === 'GET' || request.method === 'HEAD')) {
+    try {
+      const canonical = new URL(canonicalAppUrl);
+      const canonicalHost = canonical.host;
+      const canonicalProto = canonical.protocol;
+      const currentHost = request.headers.get('host') ?? request.nextUrl.host;
+
+      if (canonicalHost && currentHost && canonicalHost !== currentHost) {
+        const redirectUrl = new URL(request.url);
+        redirectUrl.protocol = canonicalProto;
+        redirectUrl.host = canonicalHost;
+        return NextResponse.redirect(redirectUrl);
+      }
+    } catch {
+      // Ignore invalid NEXT_PUBLIC_APP_URL
+    }
+  }
+
   const isPublicRoute = publicRoutes.some(route => pathname.startsWith(route));
 
   if (isPublicRoute || pathname.startsWith('/_next') || pathname.startsWith('/api/auth')) {
