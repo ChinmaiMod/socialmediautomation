@@ -26,6 +26,7 @@ import { useAuth } from '@/lib/AuthProvider';
 
 interface Account {
   id: string;
+  name?: string | null;
   platform: string;
   username: string;
   profile_url: string | null;

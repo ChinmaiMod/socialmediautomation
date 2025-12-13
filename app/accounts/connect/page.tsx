@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { Suspense, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { 
@@ -36,7 +36,7 @@ interface PlatformStatus {
   twitter: { configured: boolean };
 }
 
-export default function ConnectAccountPage() {
+function ConnectAccountPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, loading: authLoading } = useAuth();
@@ -555,5 +555,22 @@ export default function ConnectAccountPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function ConnectAccountPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="mt-4 text-gray-600">Loading...</p>
+          </div>
+        </div>
+      }
+    >
+      <ConnectAccountPageContent />
+    </Suspense>
   );
 }
