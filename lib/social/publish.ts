@@ -89,17 +89,30 @@ export async function publishToPlatform(input: PublishInput): Promise<PublishRes
     return { success: false, error: 'Missing access token for account' };
   }
 
+  const accessToken = account.access_token;
+
   try {
     switch (platform) {
       case 'linkedin': {
-        const profile = await getLinkedInProfile(account.access_token);
         const text = truncateWithEllipsis(buildFullText(input.content, input.hashtags), 3000);
-        const resp = await postToLinkedIn({
-          access_token: account.access_token,
-          person_urn: profile.id,
-          text,
-          visibility: 'PUBLIC',
-        });
+
+        const isOrganization = !!(account.username && /^\d+$/.test(account.username));
+        const resp = isOrganization
+          ? await postToLinkedIn({
+              access_token: accessToken,
+              author_urn: `urn:li:organization:${account.username}`,
+              text,
+              visibility: 'PUBLIC',
+            })
+          : await (async () => {
+              const profile = await getLinkedInProfile(accessToken);
+              return postToLinkedIn({
+                access_token: accessToken,
+                person_urn: profile.id,
+                text,
+                visibility: 'PUBLIC',
+              });
+            })();
         if (!resp.success) return { success: false, error: resp.error || 'LinkedIn post failed' };
         return {
           success: true,
@@ -110,7 +123,7 @@ export async function publishToPlatform(input: PublishInput): Promise<PublishRes
 
       case 'twitter': {
         const text = truncateWithEllipsis(buildFullText(input.content, input.hashtags), 280);
-        const resp = await postToTwitter({ access_token: account.access_token, text });
+        const resp = await postToTwitter({ access_token: accessToken, text });
         if (!resp.success) return { success: false, error: resp.error || 'Twitter post failed' };
         return {
           success: true,
@@ -126,7 +139,7 @@ export async function publishToPlatform(input: PublishInput): Promise<PublishRes
         }
         const message = buildFullText(input.content, input.hashtags);
         const resp = await postToFacebook({
-          access_token: account.access_token,
+          access_token: accessToken,
           page_id: pageId,
           message,
         });
@@ -143,7 +156,7 @@ export async function publishToPlatform(input: PublishInput): Promise<PublishRes
         if (account.username && /^\d+$/.test(account.username)) {
           instagramAccountId = account.username;
         } else {
-          instagramAccountId = await getInstagramBusinessAccountId(account.access_token);
+          instagramAccountId = await getInstagramBusinessAccountId(accessToken);
         }
         if (!instagramAccountId) {
           return { success: false, error: 'No Instagram Business Account found (must be connected to a Facebook Page)' };
@@ -151,7 +164,7 @@ export async function publishToPlatform(input: PublishInput): Promise<PublishRes
 
         let imageUrl = input.media_urls?.[0] || null;
         if (!imageUrl) {
-          imageUrl = await getInstagramProfilePictureUrl(instagramAccountId, account.access_token);
+          imageUrl = await getInstagramProfilePictureUrl(instagramAccountId, accessToken);
         }
         if (!imageUrl) {
           return { success: false, error: 'Instagram requires an image URL (no media_urls provided and no profile picture available)' };
@@ -159,7 +172,7 @@ export async function publishToPlatform(input: PublishInput): Promise<PublishRes
 
         const caption = truncateWithEllipsis(buildFullText(input.content, input.hashtags), 2200);
         const resp = await postToInstagram({
-          access_token: account.access_token,
+          access_token: accessToken,
           instagram_account_id: instagramAccountId,
           caption,
           image_url: imageUrl,

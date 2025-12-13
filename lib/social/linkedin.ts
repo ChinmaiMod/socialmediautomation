@@ -9,7 +9,8 @@ export interface LinkedInProfile {
 
 export interface LinkedInPostParams {
   access_token: string;
-  person_urn: string;
+  person_urn?: string;
+  author_urn?: string;
   text: string;
   visibility?: 'PUBLIC' | 'CONNECTIONS';
 }
@@ -48,10 +49,19 @@ export async function getLinkedInProfile(accessToken: string): Promise<LinkedInP
  */
 export async function postToLinkedIn(params: LinkedInPostParams): Promise<LinkedInPostResponse> {
   try {
-    const { access_token, person_urn, text, visibility = 'PUBLIC' } = params;
+    const { access_token, person_urn, author_urn, text, visibility = 'PUBLIC' } = params;
+
+    const author = author_urn || (person_urn ? `urn:li:person:${person_urn}` : null);
+    if (!author) {
+      return {
+        id: '',
+        success: false,
+        error: 'Missing LinkedIn author (person_urn or author_urn is required)',
+      };
+    }
 
     const postData = {
-      author: `urn:li:person:${person_urn}`,
+      author,
       lifecycleState: 'PUBLISHED',
       specificContent: {
         'com.linkedin.ugc.ShareContent': {

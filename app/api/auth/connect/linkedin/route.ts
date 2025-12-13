@@ -21,7 +21,9 @@ export async function GET(request: NextRequest) {
   const state = uuidv4();
   const redirectUri = `${appUrl}/api/auth/callback/linkedin`;
   // Don't encode - searchParams.set handles it
-  const scope = 'openid profile email w_member_social';
+  // Include org scopes so we can list company pages and post as them (Buffer-style).
+  // If the LinkedIn app is not approved for these, the user may not be able to grant them.
+  const scope = 'openid profile email w_member_social r_organization_admin w_organization_social';
   
   const authUrl = new URL('https://www.linkedin.com/oauth/v2/authorization');
   authUrl.searchParams.set('response_type', 'code');

@@ -48,6 +48,7 @@ function ConnectAccountPageContent() {
   const selectedPlatform = searchParams.get('platform');
   const isSelectingFacebookPage = selectedPlatform === 'facebook' && searchParams.get('select') === '1';
   const isSelectingInstagramAccount = selectedPlatform === 'instagram' && searchParams.get('select') === '1';
+  const isSelectingLinkedInOrganization = selectedPlatform === 'linkedin' && searchParams.get('select') === '1';
 
   const [facebookPages, setFacebookPages] = useState<Array<{ id: string; name: string }>>([]);
   const [facebookPagesLoading, setFacebookPagesLoading] = useState(false);
@@ -56,6 +57,10 @@ function ConnectAccountPageContent() {
   const [instagramAccounts, setInstagramAccounts] = useState<Array<{ id: string; username: string; page_name?: string }>>([]);
   const [instagramAccountsLoading, setInstagramAccountsLoading] = useState(false);
   const [instagramAccountsError, setInstagramAccountsError] = useState('');
+
+  const [linkedInOrganizations, setLinkedInOrganizations] = useState<Array<{ id: string; name: string }>>([]);
+  const [linkedInOrganizationsLoading, setLinkedInOrganizationsLoading] = useState(false);
+  const [linkedInOrganizationsError, setLinkedInOrganizationsError] = useState('');
 
   // Fetch platform configuration status
   useEffect(() => {
@@ -125,6 +130,30 @@ function ConnectAccountPageContent() {
 
     loadInstagramAccounts();
   }, [isSelectingInstagramAccount]);
+
+  useEffect(() => {
+    if (!isSelectingLinkedInOrganization) return;
+
+    const loadOrganizations = async () => {
+      setLinkedInOrganizationsLoading(true);
+      setLinkedInOrganizationsError('');
+      try {
+        const res = await fetch('/api/auth/linkedin/organizations');
+        const payload = await res.json();
+        if (!res.ok || !payload?.success) {
+          setLinkedInOrganizationsError(payload?.error || 'Failed to load LinkedIn organizations');
+          return;
+        }
+        setLinkedInOrganizations(payload.data || []);
+      } catch (e: any) {
+        setLinkedInOrganizationsError(e?.message || 'Failed to load LinkedIn organizations');
+      } finally {
+        setLinkedInOrganizationsLoading(false);
+      }
+    };
+
+    loadOrganizations();
+  }, [isSelectingLinkedInOrganization]);
 
   const getPlatformConfigured = (platformId: string): boolean => {
     if (!platformStatus) return false;
@@ -243,6 +272,30 @@ function ConnectAccountPageContent() {
       router.push('/accounts?success=instagram');
     } catch (e: any) {
       setInstagramAccountsError(e?.message || 'Failed to connect Instagram account');
+    } finally {
+      setConnecting(null);
+    }
+  }
+
+  async function handleSelectLinkedInOrganization(organizationId: string) {
+    setConnecting('linkedin');
+    setLinkedInOrganizationsError('');
+    try {
+      const res = await fetch('/api/auth/linkedin/select-organization', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ organization_id: organizationId }),
+      });
+      const payload = await res.json();
+
+      if (!res.ok || !payload?.success) {
+        setLinkedInOrganizationsError(payload?.error || 'Failed to connect LinkedIn organization');
+        return;
+      }
+
+      router.push('/accounts?success=linkedin');
+    } catch (e: any) {
+      setLinkedInOrganizationsError(e?.message || 'Failed to connect LinkedIn organization');
     } finally {
       setConnecting(null);
     }
@@ -400,6 +453,81 @@ function ConnectAccountPageContent() {
                         </div>
                         {connecting === 'instagram' ? (
                           <Loader2 className="w-5 h-5 animate-spin text-pink-600" />
+                        ) : (
+                          <ExternalLink className="w-4 h-4 text-gray-500" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </main>
+      </div>
+    );
+  }
+
+  if (isSelectingLinkedInOrganization) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <header className="bg-white border-b border-gray-200">
+          <div className="max-w-4xl mx-auto px-4 py-4">
+            <div className="flex items-center gap-4">
+              <Link
+                href="/accounts/connect"
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <ArrowLeft className="w-5 h-5 text-gray-600" />
+              </Link>
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-blue-600 rounded-lg">
+                  <Linkedin className="w-5 h-5 text-white" />
+                </div>
+                <span className="text-xl font-bold text-gray-900">Select a LinkedIn Organization</span>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <main className="max-w-4xl mx-auto px-4 py-8">
+          <div className="mb-6">
+            <p className="text-gray-600">
+              Choose which Company Page you want this app to post to.
+            </p>
+          </div>
+
+          {linkedInOrganizationsError && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-red-600">{linkedInOrganizationsError}</p>
+            </div>
+          )}
+
+          {linkedInOrganizationsLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+              <span className="ml-3 text-gray-600">Loading organizations...</span>
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="p-6">
+                {linkedInOrganizations.length === 0 ? (
+                  <p className="text-sm text-gray-600">
+                    No organizations found for this LinkedIn login. You may need additional permissions on your LinkedIn app.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {linkedInOrganizations.map((o) => (
+                      <button
+                        key={o.id}
+                        onClick={() => handleSelectLinkedInOrganization(o.id)}
+                        disabled={connecting === 'linkedin'}
+                        className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <span className="font-medium text-gray-900">{o.name}</span>
+                        {connecting === 'linkedin' ? (
+                          <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
                         ) : (
                           <ExternalLink className="w-4 h-4 text-gray-500" />
                         )}
