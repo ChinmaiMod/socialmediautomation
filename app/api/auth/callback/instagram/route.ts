@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
-import { supabase } from '@/lib/db';
+import { getFacebookCredentials } from '@/lib/platformCredentials';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,16 +46,21 @@ export async function GET(request: NextRequest) {
     }
 
     // Exchange code for access token
-    const clientId = process.env.FACEBOOK_APP_ID;
-    const clientSecret = process.env.FACEBOOK_APP_SECRET;
+    const { clientId, clientSecret } = await getFacebookCredentials();
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 
       `${request.headers.get('x-forwarded-proto') || 'https'}://${request.headers.get('host')}`;
     const redirectUri = `${appUrl}/api/auth/callback/instagram`;
 
+    if (!clientId || !clientSecret) {
+      return NextResponse.redirect(
+        new URL('/accounts?error=Instagram%2FFacebook+is+not+configured', request.url)
+      );
+    }
+
     const tokenUrl = new URL('https://graph.facebook.com/v18.0/oauth/access_token');
-    tokenUrl.searchParams.set('client_id', clientId!);
+    tokenUrl.searchParams.set('client_id', clientId);
     tokenUrl.searchParams.set('redirect_uri', redirectUri);
-    tokenUrl.searchParams.set('client_secret', clientSecret!);
+    tokenUrl.searchParams.set('client_secret', clientSecret);
     tokenUrl.searchParams.set('code', code);
 
     const tokenResponse = await fetch(tokenUrl.toString());
@@ -68,10 +73,26 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Exchange for long-lived token (60 days) for stability
+    const longLivedUrl = new URL('https://graph.facebook.com/v18.0/oauth/access_token');
+    longLivedUrl.searchParams.set('grant_type', 'fb_exchange_token');
+    longLivedUrl.searchParams.set('client_id', clientId);
+    longLivedUrl.searchParams.set('client_secret', clientSecret);
+    longLivedUrl.searchParams.set('fb_exchange_token', tokenData.access_token);
+
+    const longLivedResponse = await fetch(longLivedUrl.toString());
+    const longLivedData = await longLivedResponse.json();
+
+    const accessToken = longLivedData.access_token || tokenData.access_token;
+    const expiresIn = longLivedData.expires_in || tokenData.expires_in || 5184000;
+
+    const tokenExpiresAt = new Date();
+    tokenExpiresAt.setSeconds(tokenExpiresAt.getSeconds() + expiresIn);
+
     // Get Instagram Business Account
     // First, get Facebook Pages the user has access to
     const pagesUrl = new URL('https://graph.facebook.com/v18.0/me/accounts');
-    pagesUrl.searchParams.set('access_token', tokenData.access_token);
+    pagesUrl.searchParams.set('access_token', accessToken);
     pagesUrl.searchParams.set('fields', 'id,name,instagram_business_account');
 
     const pagesResponse = await fetch(pagesUrl.toString());
@@ -84,53 +105,85 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Find a page with an Instagram Business Account
-    const pageWithInstagram = pagesData.data?.find((page: any) => page.instagram_business_account);
-    
-    if (!pageWithInstagram) {
+    const pages: any[] = pagesData.data || [];
+    const instagramCandidates = pages
+      .filter((p) => p?.instagram_business_account?.id)
+      .map((p) => ({ page_id: p.id, page_name: p.name, instagram_account_id: p.instagram_business_account.id }));
+
+    if (instagramCandidates.length === 0) {
       return NextResponse.redirect(
         new URL('/accounts?error=No+Instagram+Business+Account+found', request.url)
       );
     }
 
-    // Get Instagram account details
-    const instagramUrl = new URL(`https://graph.facebook.com/v18.0/${pageWithInstagram.instagram_business_account.id}`);
-    instagramUrl.searchParams.set('access_token', tokenData.access_token);
-    instagramUrl.searchParams.set('fields', 'id,username,profile_picture_url');
+    const supabase = authClient;
 
-    const instagramResponse = await fetch(instagramUrl.toString());
-    const instagramData = await instagramResponse.json();
+    // If there is exactly one IG business account, connect it immediately.
+    if (instagramCandidates.length === 1) {
+      const selected = instagramCandidates[0];
 
-    // Calculate token expiration (60 days for long-lived token)
-    const tokenExpiresAt = new Date();
-    tokenExpiresAt.setDate(tokenExpiresAt.getDate() + 60);
+      const instagramUrl = new URL(`https://graph.facebook.com/v18.0/${selected.instagram_account_id}`);
+      instagramUrl.searchParams.set('access_token', accessToken);
+      instagramUrl.searchParams.set('fields', 'id,username,profile_picture_url');
 
-    // Save account to database
-    const { error: dbError } = await supabase
-      .from('accounts')
-      .upsert({
-        user_id: user.id,
-        platform: 'instagram',
-        username: instagramData.username || 'Instagram Business',
-        profile_url: `https://www.instagram.com/${instagramData.username}`,
-        access_token: tokenData.access_token,
-        token_expires_at: tokenExpiresAt.toISOString(),
-        is_active: true,
-      }, {
-        onConflict: 'user_id,platform,username',
-      });
+      const instagramResponse = await fetch(instagramUrl.toString());
+      const instagramData = await instagramResponse.json();
 
-    if (dbError) {
-      console.error('Database error:', dbError);
-      return NextResponse.redirect(
-        new URL('/accounts?error=Failed+to+save+account', request.url)
-      );
+      if (!instagramResponse.ok || instagramData?.error) {
+        console.error('Instagram account details error:', instagramData);
+        return NextResponse.redirect(
+          new URL('/accounts?error=Failed+to+fetch+Instagram+account+details', request.url)
+        );
+      }
+
+      const igUsername = instagramData.username || 'Instagram Business';
+      const igId = instagramData.id || selected.instagram_account_id;
+
+      const { error: dbError } = await supabase
+        .from('accounts')
+        .upsert(
+          {
+            user_id: user.id,
+            platform: 'instagram',
+            name: igUsername,
+            username: igId,
+            profile_url: igUsername ? `https://www.instagram.com/${igUsername}` : null,
+            access_token: accessToken,
+            token_expires_at: tokenExpiresAt.toISOString(),
+            is_active: true,
+          },
+          { onConflict: 'user_id,platform,username' }
+        );
+
+      if (dbError) {
+        console.error('Database error:', dbError);
+        return NextResponse.redirect(
+          new URL('/accounts?error=Failed+to+save+account', request.url)
+        );
+      }
+
+      const response = NextResponse.redirect(new URL('/accounts?success=instagram', request.url));
+      response.cookies.delete('instagram_oauth_state');
+      response.cookies.delete('instagram_user_access_token');
+      response.cookies.delete('instagram_user_token_expires_at');
+      return response;
     }
 
-    // Clear the state cookie
-    const response = NextResponse.redirect(new URL('/accounts?success=instagram', request.url));
+    // Multiple accounts: redirect to selection UI
+    const response = NextResponse.redirect(new URL('/accounts/connect?platform=instagram&select=1', request.url));
     response.cookies.delete('instagram_oauth_state');
-    
+    response.cookies.set('instagram_user_access_token', accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 600,
+    });
+    response.cookies.set('instagram_user_token_expires_at', tokenExpiresAt.toISOString(), {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 600,
+    });
     return response;
   } catch (error) {
     console.error('Instagram OAuth callback error:', error);

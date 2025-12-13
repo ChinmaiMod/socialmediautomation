@@ -47,10 +47,15 @@ export default function ConnectAccountPage() {
 
   const selectedPlatform = searchParams.get('platform');
   const isSelectingFacebookPage = selectedPlatform === 'facebook' && searchParams.get('select') === '1';
+  const isSelectingInstagramAccount = selectedPlatform === 'instagram' && searchParams.get('select') === '1';
 
   const [facebookPages, setFacebookPages] = useState<Array<{ id: string; name: string }>>([]);
   const [facebookPagesLoading, setFacebookPagesLoading] = useState(false);
   const [facebookPagesError, setFacebookPagesError] = useState('');
+
+  const [instagramAccounts, setInstagramAccounts] = useState<Array<{ id: string; username: string; page_name?: string }>>([]);
+  const [instagramAccountsLoading, setInstagramAccountsLoading] = useState(false);
+  const [instagramAccountsError, setInstagramAccountsError] = useState('');
 
   // Fetch platform configuration status
   useEffect(() => {
@@ -96,6 +101,30 @@ export default function ConnectAccountPage() {
 
     loadPages();
   }, [isSelectingFacebookPage]);
+
+  useEffect(() => {
+    if (!isSelectingInstagramAccount) return;
+
+    const loadInstagramAccounts = async () => {
+      setInstagramAccountsLoading(true);
+      setInstagramAccountsError('');
+      try {
+        const res = await fetch('/api/auth/instagram/accounts');
+        const payload = await res.json();
+        if (!res.ok || !payload?.success) {
+          setInstagramAccountsError(payload?.error || 'Failed to load Instagram accounts');
+          return;
+        }
+        setInstagramAccounts(payload.data || []);
+      } catch (e: any) {
+        setInstagramAccountsError(e?.message || 'Failed to load Instagram accounts');
+      } finally {
+        setInstagramAccountsLoading(false);
+      }
+    };
+
+    loadInstagramAccounts();
+  }, [isSelectingInstagramAccount]);
 
   const getPlatformConfigured = (platformId: string): boolean => {
     if (!platformStatus) return false;
@@ -195,6 +224,30 @@ export default function ConnectAccountPage() {
     }
   }
 
+  async function handleSelectInstagramAccount(instagramAccountId: string) {
+    setConnecting('instagram');
+    setInstagramAccountsError('');
+    try {
+      const res = await fetch('/api/auth/instagram/select-account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instagram_account_id: instagramAccountId }),
+      });
+      const payload = await res.json();
+
+      if (!res.ok || !payload?.success) {
+        setInstagramAccountsError(payload?.error || 'Failed to connect Instagram account');
+        return;
+      }
+
+      router.push('/accounts?success=instagram');
+    } catch (e: any) {
+      setInstagramAccountsError(e?.message || 'Failed to connect Instagram account');
+    } finally {
+      setConnecting(null);
+    }
+  }
+
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -269,6 +322,84 @@ export default function ConnectAccountPage() {
                         <span className="font-medium text-gray-900">{p.name}</span>
                         {connecting === 'facebook' ? (
                           <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
+                        ) : (
+                          <ExternalLink className="w-4 h-4 text-gray-500" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </main>
+      </div>
+    );
+  }
+
+  if (isSelectingInstagramAccount) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <header className="bg-white border-b border-gray-200">
+          <div className="max-w-4xl mx-auto px-4 py-4">
+            <div className="flex items-center gap-4">
+              <Link
+                href="/accounts/connect"
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <ArrowLeft className="w-5 h-5 text-gray-600" />
+              </Link>
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg">
+                  <Instagram className="w-5 h-5 text-white" />
+                </div>
+                <span className="text-xl font-bold text-gray-900">Select an Instagram Account</span>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <main className="max-w-4xl mx-auto px-4 py-8">
+          <div className="mb-6">
+            <p className="text-gray-600">
+              Choose which Instagram Business account you want this app to post to.
+            </p>
+          </div>
+
+          {instagramAccountsError && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-red-600">{instagramAccountsError}</p>
+            </div>
+          )}
+
+          {instagramAccountsLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-pink-600" />
+              <span className="ml-3 text-gray-600">Loading accounts...</span>
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="p-6">
+                {instagramAccounts.length === 0 ? (
+                  <p className="text-sm text-gray-600">No Instagram Business accounts found for this login.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {instagramAccounts.map((a) => (
+                      <button
+                        key={a.id}
+                        onClick={() => handleSelectInstagramAccount(a.id)}
+                        disabled={connecting === 'instagram'}
+                        className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <div className="text-left">
+                          <div className="font-medium text-gray-900">{a.username}</div>
+                          {a.page_name ? (
+                            <div className="text-xs text-gray-500">Linked Page: {a.page_name}</div>
+                          ) : null}
+                        </div>
+                        {connecting === 'instagram' ? (
+                          <Loader2 className="w-5 h-5 animate-spin text-pink-600" />
                         ) : (
                           <ExternalLink className="w-4 h-4 text-gray-500" />
                         )}

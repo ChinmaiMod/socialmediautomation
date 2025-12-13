@@ -225,7 +225,7 @@ export default function AccountsPage() {
                           {getPlatformIcon(account.platform)}
                         </div>
                         <div>
-                          <h3 className="font-semibold text-gray-900">{account.username}</h3>
+                          <h3 className="font-semibold text-gray-900">{account.name || account.username}</h3>
                           <p className="text-sm text-gray-500 capitalize">{account.platform}</p>
                         </div>
                       </div>

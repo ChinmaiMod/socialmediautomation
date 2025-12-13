@@ -139,7 +139,12 @@ export async function publishToPlatform(input: PublishInput): Promise<PublishRes
       }
 
       case 'instagram': {
-        const instagramAccountId = await getInstagramBusinessAccountId(account.access_token);
+        let instagramAccountId: string | null = null;
+        if (account.username && /^\d+$/.test(account.username)) {
+          instagramAccountId = account.username;
+        } else {
+          instagramAccountId = await getInstagramBusinessAccountId(account.access_token);
+        }
         if (!instagramAccountId) {
           return { success: false, error: 'No Instagram Business Account found (must be connected to a Facebook Page)' };
         }
